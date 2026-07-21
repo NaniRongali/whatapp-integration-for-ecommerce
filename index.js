@@ -356,6 +356,74 @@ const server = http.createServer(async (req, res) => {
           }
         }
 
+        const rawPhone = data.phone || data.to || (data.phoneNumbers && data.phoneNumbers[0]);
+        const messageText = data.message || data.body;
+        const attachment = data.attachment;
+        const location = data.location;
+        const contact = data.contact;
+        const sticker = data.sticker;
+
+        if (!rawPhone) {
+          res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: "Missing required 'phone' or 'to' field.",
+            })
+          );
+          return;
+        }
+
+        if (!messageText && !attachment && !location && !contact && !sticker) {
+          res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: "Missing message content. You must provide one of: 'message', 'attachment', 'location', 'contact', or 'sticker'.",
+            })
+          );
+          return;
+        }
+
+        const countryCode = data.countryCode || data.phoneCode;
+        let cleaned = String(rawPhone).replace(/\D/g, "");
+
+        if (countryCode) {
+          const cleanedCode = String(countryCode).replace(/\D/g, "");
+          if (!cleaned.startsWith(cleanedCode)) {
+            cleaned = `${cleanedCode}${cleaned}`;
+          }
+        } else if (cleaned.length === 10) {
+          cleaned = `91${cleaned}`;
+        }
+
+        if (cleaned.length < 7 || cleaned.length > 15) {
+          res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: `Invalid phone number format: '${rawPhone}'. Normalization result '${cleaned}' must contain 7 to 15 digits.`,
+            })
+          );
+          return;
+        }
+
+        if (location && typeof location === "object") {
+          const { latitude, longitude } = location;
+          if (latitude === undefined || longitude === undefined) {
+            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ success: false, error: "Missing required 'latitude' or 'longitude' fields inside location." }));
+            return;
+          }
+        } else if (contact && typeof contact === "object") {
+          const { fullName, phone } = contact;
+          if (!fullName || !phone) {
+            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ success: false, error: "Missing required 'fullName' or 'phone' fields inside contact." }));
+            return;
+          }
+        }
+
         if (!isConnected || !sock) {
           res.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
           res.end(
@@ -367,30 +435,46 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        const rawPhone = data.phone || data.to || (data.phoneNumbers && data.phoneNumbers[0]);
-        const messageText = data.message || data.body;
-        const attachment = data.attachment;
-
-        if (!rawPhone || !messageText) {
-          res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-          res.end(
-            JSON.stringify({
-              success: false,
-              error: "Missing required 'phone' or 'message' field.",
-            })
-          );
-          return;
-        }
-
-        let cleaned = String(rawPhone).replace(/\D/g, "");
-        if (cleaned.length === 10) {
-          cleaned = `91${cleaned}`;
-        }
         const jid = `${cleaned}@s.whatsapp.net`;
 
         console.log(`[Sending Live Baileys WhatsApp] ➡️ To: ${cleaned}`);
 
-        if (attachment && attachment.fileName && attachment.contentBase64) {
+        if (location && typeof location === "object") {
+          const { latitude, longitude, name, address } = location;
+          await sock.sendMessage(jid, {
+            location: {
+              degreesLatitude: parseFloat(latitude),
+              degreesLongitude: parseFloat(longitude),
+              name: name || "",
+              address: address || "",
+            },
+          });
+        } else if (contact && typeof contact === "object") {
+          const { fullName, organization, phone } = contact;
+          const cleanContactPhone = String(phone).replace(/\D/g, "");
+          const vcard =
+            `BEGIN:VCARD\n` +
+            `VERSION:3.0\n` +
+            `FN:${fullName}\n` +
+            (organization ? `ORG:${organization};\n` : "") +
+            `TEL;type=CELL;type=VOICE;waid=${cleanContactPhone}:${phone}\n` +
+            `END:VCARD`;
+
+          await sock.sendMessage(jid, {
+            contacts: {
+              displayName: fullName,
+              contacts: [{ vcard }],
+            },
+          });
+        } else if (sticker || (attachment && (attachment.isSticker || (attachment.contentType && attachment.contentType.toLowerCase() === "image/webp")))) {
+          let stickerBuffer;
+          if (sticker) {
+            stickerBuffer = Buffer.from(sticker, "base64");
+          } else {
+            stickerBuffer = Buffer.from(attachment.contentBase64, "base64");
+          }
+          await sock.sendMessage(jid, { sticker: stickerBuffer });
+        } else if (attachment && attachment.fileName && attachment.contentBase64) {
           const buffer = Buffer.from(attachment.contentBase64, "base64");
           const mimeType = (attachment.contentType || "").toLowerCase();
           const fileName = attachment.fileName.toLowerCase();
@@ -401,14 +485,14 @@ const server = http.createServer(async (req, res) => {
             // Send as inline image preview
             messageOptions = {
               image: buffer,
-              caption: messageText,
+              caption: messageText || "",
               mimetype: attachment.contentType,
             };
           } else if (mimeType.startsWith("video/") || mimeType.includes("gif") || fileName.endsWith(".gif")) {
             // Send as inline video, or autoplaying GIF if it's a GIF
             messageOptions = {
               video: buffer,
-              caption: messageText,
+              caption: messageText || "",
               mimetype: attachment.contentType || "video/mp4",
               gifPlayback: mimeType.includes("gif") || fileName.endsWith(".gif"),
             };
@@ -417,7 +501,7 @@ const server = http.createServer(async (req, res) => {
             messageOptions = {
               audio: buffer,
               mimetype: attachment.contentType,
-              caption: messageText,
+              caption: messageText || "",
             };
           } else {
             // Default to document upload (PDF, CSV, doc, xlsx, etc.)
@@ -425,7 +509,7 @@ const server = http.createServer(async (req, res) => {
               document: buffer,
               fileName: attachment.fileName,
               mimetype: attachment.contentType || "application/octet-stream",
-              caption: messageText,
+              caption: messageText || "",
             };
           }
 

@@ -85,15 +85,28 @@ When `WHATSAPP_API_TOKEN` is set, all incoming HTTP calls require authorization.
   }
   ```
 
-### 2. Send Message / Attachment
+### 2. Send Message / Media / Advanced Features
 * **Method:** `POST`
 * **Endpoint:** `http://localhost:3001/`
 * **Headers:** `Content-Type: application/json` & `Authorization: Bearer YOUR_API_TOKEN`
 
 #### Request Payload Schema
+
+You must provide a recipient `to` (or `phone`), and at least one message content type: `message` (text), `attachment` (media), `location` (pin), `contact` (card), or `sticker` (webp).
+
+##### A. Standard Text Message (with dynamic countryCode fallback)
 ```json
 {
-  "to": "919876543210", 
+  "to": "5551234567",
+  "countryCode": "1", // Optional. If omitted and number is 10 digits, prepends "91" (India).
+  "message": "Hello!"
+}
+```
+
+##### B. Document / Image / Video / Audio Attachment
+```json
+{
+  "to": "+919876543210", 
   "message": "Text content or media caption",
   "attachment": {
     "fileName": "invoice.pdf",
@@ -102,6 +115,40 @@ When `WHATSAPP_API_TOKEN` is set, all incoming HTTP calls require authorization.
   }
 }
 ```
+
+##### C. Location Pin
+```json
+{
+  "to": "+15551234567",
+  "location": {
+    "latitude": 12.9716,
+    "longitude": 77.5946,
+    "name": "Headquarters",
+    "address": "123 Tech Park Road, Bangalore, India"
+  }
+}
+```
+
+##### D. Contact Card (vCard)
+```json
+{
+  "to": "+15551234567",
+  "contact": {
+    "fullName": "Jane Doe",
+    "organization": "ACME Corp",
+    "phone": "+1 555-987-6543"
+  }
+}
+```
+
+##### E. Sticker
+```json
+{
+  "to": "+15551234567",
+  "sticker": "UklGRiIAAABXRUJQVlA4..." // WebP file content in base64
+}
+```
+*Note: Alternatively, send a standard attachment with `"isSticker": true` or `"contentType": "image/webp"`.*
 
 #### Media Type Handling
 The gateway dynamically determines how to deliver the attachment based on the `contentType` or `fileName` extension:
