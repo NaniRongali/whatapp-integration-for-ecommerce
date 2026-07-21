@@ -111,3 +111,29 @@ This feature does **not** replace the existing Base64 file paths workflow. The g
 * If the payload has `"url"`, it fetches the remote file in-memory.
 
 This ensures both methods work side-by-side, preserving backward compatibility with legacy client apps.
+
+---
+
+## 5. Supported Document Formats & MIME Types
+
+The gateway supports sending virtually any document format via URL. When the `contentType` does not match an image, video, or audio, the gateway automatically dispatches it as a standard WhatsApp **Document** using the following MIME types:
+
+* 📄 **PDF Documents**: `application/pdf` (`.pdf`)
+* 📊 **Excel Spreadsheets**: `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` (`.xlsx`), `application/vnd.ms-excel` (`.xls`)
+* 📝 **Word Documents**: `application/vnd.openxmlformats-officedocument.wordprocessingml.document` (`.docx`), `application/msword` (`.doc`)
+* 📉 **PowerPoint Slides**: `application/vnd.openxmlformats-officedocument.presentationml.presentation` (`.pptx`), `application/vnd.ms-powerpoint` (`.ppt`)
+* 📁 **CSV Sheets**: `text/csv` (`.csv`)
+* 🗒️ **Plain Text / Log files**: `text/plain` (`.txt`, `.log`)
+* ⚙️ **JSON Data**: `application/json` (`.json`)
+* 📦 **ZIP/RAR Archives**: `application/zip` (`.zip`), `application/x-rar-compressed` (`.rar`)
+* 💻 **Other extensions**: E.g. `.apk` (`application/vnd.android.package-archive`), `.exe` / `.bin` (`application/octet-stream`).
+
+---
+
+## 6. File Size Limits & Automated Optimization
+
+The Swift Project Gateway enforces safety controls and performs automated optimization:
+* **Max Payload Limit (200MB)**: The gateway will strictly reject any attachment file exceeding **200MB** with an HTTP `400 Bad Request` code to prevent server memory crashes.
+* **Automated Image Optimization**: Images exceeding 1600px width/height are automatically scaled down and compressed at **80% JPEG/PNG quality** in-memory.
+* **Automated Video Compression**: If system FFmpeg is available on the path, video uploads are automatically compressed (H.264 codec, CRF 28) to minimize mobile data consumption before dispatch.
+* **Safe Fallbacks**: If optimization fails or FFmpeg is absent, the gateway safely falls back to sending the original uncompressed file buffer.
