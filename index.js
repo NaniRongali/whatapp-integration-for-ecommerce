@@ -39,6 +39,29 @@ console.log("--------------------------------------------------");
 console.log("🚀 Starting In-House Ultra-Lightweight WhatsApp Gateway");
 console.log("--------------------------------------------------");
 
+async function downloadUrlToBuffer(url) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch URL: ${response.statusText} (${response.status})`);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  const contentType = response.headers.get("content-type") || "";
+  
+  const parsedUrl = new URL(url);
+  const pathname = parsedUrl.pathname;
+  let fileName = pathname.substring(pathname.lastIndexOf("/") + 1) || "file";
+  
+  if (!fileName.includes(".") && contentType) {
+    const ext = contentType.split("/")[1];
+    if (ext) {
+      fileName = `${fileName}.${ext}`;
+    }
+  }
+
+  return { buffer, contentType, fileName };
+}
+
 const PORT = process.env.PORT || 3001;
 const AUTH_FOLDER = path.join(process.cwd(), ".baileys_auth");
 
@@ -415,7 +438,14 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        if (location && typeof location === "object") {
+        if (attachment && typeof attachment === "object") {
+          if (!attachment.url && (!attachment.fileName || !attachment.contentBase64)) {
+            console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Attachment must include 'url' or both 'fileName' and 'contentBase64'.`);
+            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ success: false, error: "Attachment must include either 'url' or both 'fileName' and 'contentBase64'." }));
+            return;
+          }
+        } else if (location && typeof location === "object") {
           const { latitude, longitude } = location;
           if (latitude === undefined || longitude === undefined) {
             console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Missing coordinates inside location.`);
@@ -601,15 +631,36 @@ const server = http.createServer(async (req, res) => {
         } else if (sticker || (attachment && (attachment.isSticker || (attachment.contentType && attachment.contentType.toLowerCase() === "image/webp")))) {
           let stickerBuffer;
           if (sticker) {
-            stickerBuffer = Buffer.from(sticker, "base64");
+            if (sticker.startsWith("http://") || sticker.startsWith("https://")) {
+              const download = await downloadUrlToBuffer(sticker);
+              stickerBuffer = download.buffer;
+            } else {
+              stickerBuffer = Buffer.from(sticker, "base64");
+            }
           } else {
-            stickerBuffer = Buffer.from(attachment.contentBase64, "base64");
+            if (attachment.url) {
+              const download = await downloadUrlToBuffer(attachment.url);
+              stickerBuffer = download.buffer;
+            } else {
+              stickerBuffer = Buffer.from(attachment.contentBase64, "base64");
+            }
           }
           await sock.sendMessage(jid, { sticker: stickerBuffer }, sendOptions);
-        } else if (attachment && attachment.fileName && attachment.contentBase64) {
-          const buffer = Buffer.from(attachment.contentBase64, "base64");
-          const mimeType = (attachment.contentType || "").toLowerCase();
-          const fileName = attachment.fileName.toLowerCase();
+        } else if (attachment && (attachment.contentBase64 || attachment.url)) {
+          let buffer;
+          let mimeType;
+          let fileName;
+
+          if (attachment.url) {
+            const download = await downloadUrlToBuffer(attachment.url);
+            buffer = download.buffer;
+            mimeType = (attachment.contentType || download.contentType || "").toLowerCase();
+            fileName = (attachment.fileName || download.fileName || "file").toLowerCase();
+          } else {
+            buffer = Buffer.from(attachment.contentBase64, "base64");
+            mimeType = (attachment.contentType || "").toLowerCase();
+            fileName = (attachment.fileName || "").toLowerCase();
+          }
 
           let messageOptions = {
             mentions: mentionsJids.length > 0 ? mentionsJids : undefined,
@@ -618,20 +669,20 @@ const server = http.createServer(async (req, res) => {
           if (mimeType.startsWith("image/") && !mimeType.includes("gif")) {
             messageOptions.image = buffer;
             messageOptions.caption = messageText || "";
-            messageOptions.mimetype = attachment.contentType;
+            messageOptions.mimetype = mimeType;
           } else if (mimeType.startsWith("video/") || mimeType.includes("gif") || fileName.endsWith(".gif")) {
             messageOptions.video = buffer;
             messageOptions.caption = messageText || "";
-            messageOptions.mimetype = attachment.contentType || "video/mp4";
+            messageOptions.mimetype = mimeType || "video/mp4";
             messageOptions.gifPlayback = mimeType.includes("gif") || fileName.endsWith(".gif");
           } else if (mimeType.startsWith("audio/")) {
             messageOptions.audio = buffer;
-            messageOptions.mimetype = attachment.contentType;
+            messageOptions.mimetype = mimeType;
             messageOptions.caption = messageText || "";
           } else {
             messageOptions.document = buffer;
-            messageOptions.fileName = attachment.fileName;
-            messageOptions.mimetype = attachment.contentType || "application/octet-stream";
+            messageOptions.fileName = fileName;
+            messageOptions.mimetype = mimeType || "application/octet-stream";
             messageOptions.caption = messageText || "";
           }
 

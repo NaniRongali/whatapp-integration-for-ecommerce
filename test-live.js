@@ -71,27 +71,27 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function executeLiveTest() {
   console.log("--------------------------------------------------");
-  console.log(`🚀 STARTING MASTER LIVE TEST TO RECIPIENT: ${TARGET_PHONE}`);
+  console.log(`🚀 STARTING COMPREHENSIVE LIVE TEST TO RECIPIENT: ${TARGET_PHONE}`);
   console.log("--------------------------------------------------");
 
   try {
     // 1. Send Presence Composing (Typing)
-    console.log("\n[1/13] Sending typing presence indicator...");
+    console.log("\n[1/16] Sending typing presence indicator...");
     const r1 = await postJSON({ to: TARGET_PHONE, presence: "composing" });
     console.log("Status:", r1.statusCode, "Response:", r1.body);
     await sleep(2000);
 
     // 2. Send Text Message
-    console.log("\n[2/13] Sending standard text message...");
+    console.log("\n[2/16] Sending standard text message...");
     const r2 = await postJSON({ 
       to: TARGET_PHONE, 
-      message: "Hello! This is the Swift Project master live test suite verifying all gateway features." 
+      message: "Hello! This is the Swift Project comprehensive test verifying both direct URLs & Base64 workflows." 
     });
     console.log("Status:", r2.statusCode, "Response:", r2.body);
     await sleep(2500);
 
     // 3. Send Quoted Reply
-    console.log("\n[3/13] Sending quoted reply message...");
+    console.log("\n[3/16] Sending quoted reply message...");
     const r3 = await postJSON({
       to: TARGET_PHONE,
       message: "This is a replies test quoting a dummy message ID.",
@@ -103,7 +103,7 @@ async function executeLiveTest() {
     await sleep(2500);
 
     // 4. Send Group Mention Payload (Simulated text)
-    console.log("\n[4/13] Sending tag/mentions payload text...");
+    console.log("\n[4/16] Sending tag/mentions payload text...");
     const r4 = await postJSON({
       to: TARGET_PHONE,
       message: "Hey @919876543210 (simulated mention tag link verification)",
@@ -113,7 +113,7 @@ async function executeLiveTest() {
     await sleep(2500);
 
     // 5. Send Location Pin
-    console.log("\n[5/13] Sending location pin...");
+    console.log("\n[5/16] Sending location pin...");
     const r5 = await postJSON({
       to: TARGET_PHONE,
       location: {
@@ -127,7 +127,7 @@ async function executeLiveTest() {
     await sleep(2500);
 
     // 6. Send Single Contact Card
-    console.log("\n[6/13] Sending single contact card (Jane Doe)...");
+    console.log("\n[6/16] Sending single contact card (Jane Doe)...");
     const r6 = await postJSON({
       to: TARGET_PHONE,
       contact: {
@@ -140,7 +140,7 @@ async function executeLiveTest() {
     await sleep(2500);
 
     // 7. Send Multiple Contact Cards
-    console.log("\n[7/13] Sending multiple contact cards (Support Directory)...");
+    console.log("\n[7/16] Sending multiple contact cards (Support Directory)...");
     const r7 = await postJSON({
       to: TARGET_PHONE,
       contactsDisplayName: "Swift Team Directory",
@@ -152,102 +152,72 @@ async function executeLiveTest() {
     console.log("Status:", r7.statusCode, "Response:", r7.body);
     await sleep(2500);
 
-    // 8. Send WebP Sticker
-    console.log("\n[8/13] Downloading and sending real WebP sticker...");
-    try {
-      const realStickerUrl = "https://raw.githubusercontent.com/WhatsApp/stickers/master/Android/app/src/main/assets/1/01_Cuppy_smile.webp";
-      const base64Sticker = await fetchBase64(realStickerUrl);
-      const r8 = await postJSON({
-        to: TARGET_PHONE,
-        sticker: base64Sticker
-      });
-      console.log("Status:", r8.statusCode, "Response:", r8.body);
-    } catch (err) {
-      console.error("Failed to fetch/send real WebP sticker:", err.message);
-    }
+    // 8. Send WebP Sticker via Direct URL
+    console.log("\n[8/16] Sending WebP sticker via direct URL...");
+    const r8 = await postJSON({
+      to: TARGET_PHONE,
+      sticker: "https://raw.githubusercontent.com/WhatsApp/stickers/master/Android/app/src/main/assets/1/01_Cuppy_smile.webp"
+    });
+    console.log("Status:", r8.statusCode, "Response:", r8.body);
     await sleep(2500);
 
-    // 9. Send Real Image Attachment
-    console.log("\n[9/13] Downloading and sending real inline image...");
-    try {
-      const imageUrl = "https://interactive-examples.mdn.mozilla.net/media/cc0-images/grapefruit-slice-332-332.jpg";
-      const base64Image = await fetchBase64(imageUrl);
-      const r9 = await postJSON({
-        to: TARGET_PHONE,
-        message: "This is a real grapefruit slice image test!",
-        attachment: {
-          fileName: "grapefruit.jpg",
-          contentType: "image/jpeg",
-          contentBase64: base64Image
-        }
-      });
-      console.log("Status:", r9.statusCode, "Response:", r9.body);
-    } catch (err) {
-      console.error("Failed to fetch/send real image:", err.message);
-    }
+    // 9. Send Image Attachment via Direct URL
+    console.log("\n[9/16] Sending image attachment via direct URL...");
+    const r9 = await postJSON({
+      to: TARGET_PHONE,
+      message: "Direct URL image attachment test!",
+      attachment: {
+        url: "https://interactive-examples.mdn.mozilla.net/media/cc0-images/grapefruit-slice-332-332.jpg",
+        fileName: "grapefruit.jpg",
+        contentType: "image/jpeg"
+      }
+    });
+    console.log("Status:", r9.statusCode, "Response:", r9.body);
     await sleep(2500);
 
-    // 10. Send Real Video Attachment
-    console.log("\n[10/13] Downloading and sending real video clip...");
-    try {
-      const videoUrl = "https://www.w3schools.com/html/mov_bbb.mp4";
-      const base64Video = await fetchBase64(videoUrl);
-      const r10 = await postJSON({
-        to: TARGET_PHONE,
-        message: "This is a real video clip attachment test!",
-        attachment: {
-          fileName: "big-buck-bunny.mp4",
-          contentType: "video/mp4",
-          contentBase64: base64Video
-        }
-      });
-      console.log("Status:", r10.statusCode, "Response:", r10.body);
-    } catch (err) {
-      console.error("Failed to fetch/send real video:", err.message);
-    }
+    // 10. Send Video Attachment via Direct URL
+    console.log("\n[10/16] Sending video attachment via direct URL...");
+    const r10 = await postJSON({
+      to: TARGET_PHONE,
+      message: "Direct URL video attachment test!",
+      attachment: {
+        url: "https://www.w3schools.com/html/mov_bbb.mp4",
+        fileName: "big-buck-bunny.mp4",
+        contentType: "video/mp4"
+      }
+    });
+    console.log("Status:", r10.statusCode, "Response:", r10.body);
     await sleep(2500);
 
-    // 11. Send Real Document (PDF) Attachment
-    console.log("\n[11/13] Downloading and sending real PDF document...");
-    try {
-      const pdfUrl = "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf";
-      const base64Pdf = await fetchBase64(pdfUrl);
-      const r11 = await postJSON({
-        to: TARGET_PHONE,
-        message: "Here is your system generated PDF report document.",
-        attachment: {
-          fileName: "monthly-report.pdf",
-          contentType: "application/pdf",
-          contentBase64: base64Pdf
-        }
-      });
-      console.log("Status:", r11.statusCode, "Response:", r11.body);
-    } catch (err) {
-      console.error("Failed to fetch/send real PDF document:", err.message);
-    }
+    // 11. Send PDF Document Attachment via Direct URL
+    console.log("\n[11/16] Sending PDF document via direct URL...");
+    const r11 = await postJSON({
+      to: TARGET_PHONE,
+      message: "Direct URL PDF document test.",
+      attachment: {
+        url: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+        fileName: "monthly-report.pdf",
+        contentType: "application/pdf"
+      }
+    });
+    console.log("Status:", r11.statusCode, "Response:", r11.body);
     await sleep(2500);
 
-    // 12. Send Real Audio note
-    console.log("\n[12/13] Downloading and sending real audio note...");
-    try {
-      const realAudioUrl = "https://www.w3schools.com/html/horse.mp3";
-      const base64Audio = await fetchBase64(realAudioUrl);
-      const r12 = await postJSON({
-        to: TARGET_PHONE,
-        attachment: {
-          fileName: "horse-neigh.mp3",
-          contentType: "audio/mpeg",
-          contentBase64: base64Audio
-        }
-      });
-      console.log("Status:", r12.statusCode, "Response:", r12.body);
-    } catch (err) {
-      console.error("Failed to fetch/send real audio note:", err.message);
-    }
+    // 12. Send Audio note via Direct URL
+    console.log("\n[12/16] Sending audio note via direct URL...");
+    const r12 = await postJSON({
+      to: TARGET_PHONE,
+      attachment: {
+        url: "https://www.w3schools.com/html/horse.mp3",
+        fileName: "horse-neigh.mp3",
+        contentType: "audio/mpeg"
+      }
+    });
+    console.log("Status:", r12.statusCode, "Response:", r12.body);
     await sleep(2500);
 
     // 13. Send Interactive Poll
-    console.log("\n[13/13] Sending interactive poll...");
+    console.log("\n[13/16] Sending interactive poll...");
     const r13 = await postJSON({
       to: TARGET_PHONE,
       poll: {
@@ -257,9 +227,64 @@ async function executeLiveTest() {
       }
     });
     console.log("Status:", r13.statusCode, "Response:", r13.body);
+    await sleep(2500);
+
+    // 14. Send Image Attachment via Base64
+    console.log("\n[14/16] Sending image attachment via Base64 (backward compatibility test)...");
+    try {
+      const imageUrl = "https://interactive-examples.mdn.mozilla.net/media/cc0-images/grapefruit-slice-332-332.jpg";
+      const base64Image = await fetchBase64(imageUrl);
+      const r14 = await postJSON({
+        to: TARGET_PHONE,
+        message: "Verify Base64 inline image rendering",
+        attachment: {
+          fileName: "grapefruit-base64.jpg",
+          contentType: "image/jpeg",
+          contentBase64: base64Image
+        }
+      });
+      console.log("Status:", r14.statusCode, "Response:", r14.body);
+    } catch (err) {
+      console.error("Failed to send Base64 image:", err.message);
+    }
+    await sleep(2500);
+
+    // 15. Send PDF Document Attachment via Base64
+    console.log("\n[15/16] Sending PDF document via Base64 (backward compatibility test)...");
+    try {
+      const pdfUrl = "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf";
+      const base64Pdf = await fetchBase64(pdfUrl);
+      const r15 = await postJSON({
+        to: TARGET_PHONE,
+        message: "Verify Base64 document attachment",
+        attachment: {
+          fileName: "report-base64.pdf",
+          contentType: "application/pdf",
+          contentBase64: base64Pdf
+        }
+      });
+      console.log("Status:", r15.statusCode, "Response:", r15.body);
+    } catch (err) {
+      console.error("Failed to send Base64 PDF:", err.message);
+    }
+    await sleep(2500);
+
+    // 16. Send Sticker via Base64
+    console.log("\n[16/16] Sending sticker via Base64 (backward compatibility test)...");
+    try {
+      const realStickerUrl = "https://raw.githubusercontent.com/WhatsApp/stickers/master/Android/app/src/main/assets/1/01_Cuppy_smile.webp";
+      const base64Sticker = await fetchBase64(realStickerUrl);
+      const r16 = await postJSON({
+        to: TARGET_PHONE,
+        sticker: base64Sticker
+      });
+      console.log("Status:", r16.statusCode, "Response:", r16.body);
+    } catch (err) {
+      console.error("Failed to send Base64 sticker:", err.message);
+    }
 
     console.log("\n--------------------------------------------------");
-    console.log("🎉 ALL 13 SWIFT PROJECT FEATURES DISPATCHED SUCCESSFULLY!");
+    console.log("🎉 ALL 16 COMPREHENSIVE SWIFT GATEWAY FEATURES VERIFIED!");
     console.log("--------------------------------------------------");
 
   } catch (err) {

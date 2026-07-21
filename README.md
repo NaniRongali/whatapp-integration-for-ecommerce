@@ -21,6 +21,7 @@ This gateway allows any calling application (like a CRM, ERP, Swift Project, or 
 * [Testing the Gateway Live](#testing-the-gateway-live)
 * [Message Delivery Logging](#message-delivery-logging)
 * [Code Integration Examples](#code-integration-examples)
+* [Future Features and Roadmap](#future-features-and-roadmap)
 * [Troubleshooting and FAQs](#troubleshooting-and-faqs)
 
 ---
@@ -103,7 +104,8 @@ When `WHATSAPP_API_TOKEN` is set, all incoming HTTP calls require authorization.
 To accommodate developers of all experience levels, we have split the message integration guides into dedicated, granular sheets. **Click on each link below to view detailed JSON payload schemas, parameters explanation, and copy-pasteable examples:**
 
 * ✉️ **[Text Messages](docs/text-messages.md)**: How to send standard text messages, format global numbers, and configure default country-code fallbacks.
-* 📁 **[Media and File Attachments](docs/media-attachments.md)**: Sending images, videos, audio clips, and files (PDF, CSV, Excel) in-memory using stateless Base64 encoding.
+* 📁 **[Media and File Attachments](docs/media-attachments.md)**: Sending files (PDF, CSV, Excel, Images, Videos, Audio) in-memory using stateless Base64 encoding.
+* 🔗 **[Direct URL Attachments](docs/direct-url-attachments.md)**: Sending media and files (Stickers, Images, Videos, Documents, Audio) dynamically via direct file Web URLs (lightweight payloads).
 * 📍 **[Location Pins](docs/location-pins.md)**: Sending maps and pin drops using latitude, longitude, and custom names/addresses.
 * 👤 **[Contact Cards (vCards)](docs/contact-cards.md)**: Sharing single or multiple contact cards natively formatted as vCard compliance entries.
 * 🎫 **[Stickers](docs/stickers.md)**: Delivering WebP transparency stickers (512x512 pixels).
@@ -392,6 +394,18 @@ The Node.js terminal window printing the gateway service logs will display activ
   `[Connection Offline]: Cannot deliver to '919876543210'. WhatsApp client is disconnected.`
 * **Fatal Dispatch Errors**:
   `[WhatsApp API Error] ❌ Failed to deliver to: 919876543210. Reason: <details>`
+
+---
+
+## Future Features and Roadmap
+
+To further extend the capabilities of the Swift Project Gateway, the following features are planned for future development and can be integrated as needed:
+
+* **[Completed]** 🔗 **Direct URL Attachments & Media Optimization**: Send media/files by passing direct file URLs. The gateway downloads them in-memory, auto-extracts filenames, and auto-detects MIME types natively.
+* 🔔 **Two-Way Webhook Notifications**: Forward incoming WhatsApp replies, user messages, and interactive poll votes back to your backend endpoint in real time.
+* 👥 **Multi-Session Support**: Run and manage multiple linked WhatsApp numbers from a single gateway server instance using session identifiers.
+* 🎫 **Interactive Lists & CTA Buttons**: Support sending rich options lists and tap-action quick replies to clients.
+* ⚙️ **Image/Video Compression Optimization**: Compress large images and re-encode videos on the fly in memory before transmission to reduce mobile data usage.
 
 ---
 
