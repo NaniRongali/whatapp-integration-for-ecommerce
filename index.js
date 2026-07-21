@@ -14,6 +14,10 @@ const qrcodeTerminal = require("qrcode-terminal");
 const fs = require("fs");
 const path = require("path");
 const { Pool } = require("pg");
+const { exec } = require("child_process");
+const os = require("os");
+const crypto = require("crypto");
+const { Jimp } = require("jimp");
 
 // Load local .env file
 const envPath = path.join(process.cwd(), ".env");
@@ -60,6 +64,84 @@ async function downloadUrlToBuffer(url) {
   }
 
   return { buffer, contentType, fileName };
+}
+
+async function optimizeImageIfPossible(buffer, contentType) {
+  try {
+    const mime = (contentType || "").toLowerCase();
+    if (mime.startsWith("image/") && !mime.includes("gif") && !mime.includes("webp")) {
+      const img = await Jimp.read(buffer);
+      let resized = false;
+      if (img.width > 1600 || img.height > 1600) {
+        img.resize({ w: 1600 });
+        resized = true;
+      }
+      const optimizedBuffer = await img.getBuffer(mime, { quality: 80 });
+      console.log(`[Media Optimization]: Image optimized (quality: 80%, resized: ${resized}). Size reduced from ${buffer.length} to ${optimizedBuffer.length} bytes.`);
+      return optimizedBuffer;
+    }
+  } catch (err) {
+    console.warn(`[Media Optimization Alert]: Jimp image processing failed. Using original buffer. Reason: ${err.message}`);
+  }
+  return buffer;
+}
+
+function isFFmpegAvailable() {
+  return new Promise((resolve) => {
+    exec("ffmpeg -version", (err) => {
+      resolve(!err);
+    });
+  });
+}
+
+function compressVideoIfPossible(buffer) {
+  return new Promise(async (resolve) => {
+    try {
+      const ffmpegExists = await isFFmpegAvailable();
+      if (!ffmpegExists) {
+        console.log("[Media Optimization]: FFmpeg not installed. Skipping video compression.");
+        resolve(buffer);
+        return;
+      }
+
+      const tempDir = os.tmpdir();
+      const rand = crypto.randomBytes(6).toString("hex");
+      const inputPath = path.join(tempDir, `swift_in_${rand}.mp4`);
+      const outputPath = path.join(tempDir, `swift_out_${rand}.mp4`);
+
+      fs.writeFileSync(inputPath, buffer);
+
+      const command = `ffmpeg -y -i "${inputPath}" -vcodec libx264 -crf 28 -preset superfast -acodec aac -b:a 128k "${outputPath}"`;
+      
+      exec(command, (err) => {
+        try {
+          if (err) {
+            console.warn(`[Media Optimization Alert]: FFmpeg video compression failed. Using original buffer. Reason: ${err.message}`);
+            if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+            resolve(buffer);
+            return;
+          }
+
+          if (fs.existsSync(outputPath)) {
+            const compressedBuffer = fs.readFileSync(outputPath);
+            console.log(`[Media Optimization]: Video optimized (CRF: 28). Size reduced from ${buffer.length} to ${compressedBuffer.length} bytes.`);
+            if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+            if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+            resolve(compressedBuffer);
+          } else {
+            if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+            resolve(buffer);
+          }
+        } catch (e) {
+          console.warn("[Media Optimization Alert]: Video compression cleanup error:", e.message);
+          resolve(buffer);
+        }
+      });
+    } catch (err) {
+      console.warn(`[Media Optimization Alert]: Video processing error. Using original buffer. Reason: ${err.message}`);
+      resolve(buffer);
+    }
+  });
 }
 
 const PORT = process.env.PORT || 3001;
@@ -645,6 +727,15 @@ const server = http.createServer(async (req, res) => {
               stickerBuffer = Buffer.from(attachment.contentBase64, "base64");
             }
           }
+
+          const MAX_SIZE = 200 * 1024 * 1024;
+          if (stickerBuffer.length > MAX_SIZE) {
+            console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Sticker size (${(stickerBuffer.length / (1024 * 1024)).toFixed(1)}MB) exceeds the 200MB limit.`);
+            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ success: false, error: "File size exceeds the maximum limit of 200MB." }));
+            return;
+          }
+
           await sock.sendMessage(jid, { sticker: stickerBuffer }, sendOptions);
         } else if (attachment && (attachment.contentBase64 || attachment.url)) {
           let buffer;
@@ -660,6 +751,20 @@ const server = http.createServer(async (req, res) => {
             buffer = Buffer.from(attachment.contentBase64, "base64");
             mimeType = (attachment.contentType || "").toLowerCase();
             fileName = (attachment.fileName || "").toLowerCase();
+          }
+
+          const MAX_SIZE = 200 * 1024 * 1024;
+          if (buffer.length > MAX_SIZE) {
+            console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Attachment size (${(buffer.length / (1024 * 1024)).toFixed(1)}MB) exceeds the 200MB limit.`);
+            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ success: false, error: "File size exceeds the maximum limit of 200MB." }));
+            return;
+          }
+
+          if (mimeType.startsWith("image/") && !mimeType.includes("gif") && !mimeType.includes("webp")) {
+            buffer = await optimizeImageIfPossible(buffer, mimeType);
+          } else if (mimeType.startsWith("video/") && !fileName.endsWith(".gif")) {
+            buffer = await compressVideoIfPossible(buffer);
           }
 
           let messageOptions = {

@@ -20,6 +20,7 @@ This gateway allows any calling application (like a CRM, ERP, Swift Project, or 
 * [Inspiration and Warnings](#inspiration-and-warnings)
 * [Testing the Gateway Live](#testing-the-gateway-live)
 * [Message Delivery Logging](#message-delivery-logging)
+* [Media Optimization and Limits](docs/media-optimization-and-limits.md)
 * [Code Integration Examples](#code-integration-examples)
 * [Future Features and Roadmap](#future-features-and-roadmap)
 * [Troubleshooting and FAQs](#troubleshooting-and-faqs)
@@ -140,7 +141,7 @@ To verify all features (typing status, standard texts, locations, contact cards,
 ```bash
 node test-live.js <phone_number>
 ```
-*Replace `<phone_number>` with your target testing phone number (including country code, e.g., `919876543210`). The script will run all 13 validation scenarios sequentially with the safe 2.5-second throttling delay.*
+*Replace `<phone_number>` with your target testing phone number (including country code, e.g., `919876543210`). The script will run all 18 validation scenarios sequentially with the safe 2.5-second throttling delay.*
 
 ### 2. Test Multi-Recipient Broadcast (Safe Delays)
 ```bash
@@ -401,11 +402,12 @@ The Node.js terminal window printing the gateway service logs will display activ
 
 To further extend the capabilities of the Swift Project Gateway, the following features are planned for future development and can be integrated as needed:
 
-* **[Completed]** 🔗 **Direct URL Attachments & Media Optimization**: Send media/files by passing direct file URLs. The gateway downloads them in-memory, auto-extracts filenames, and auto-detects MIME types natively.
+* **[Completed]** 🔗 **Direct URL Attachments**: Send media/files by passing direct file Web URLs.
+* **[Completed]** ⚙️ **Automated Media Optimization**: Compress images (Jimp 80% quality, max 1600px resizing) and videos (FFmpeg H.264/CRF-28 compression) dynamically in-memory.
+* **[Completed]** 🚯 **Max Payload Safety Checks**: Reject payloads exceeding 200MB to protect memory allocation.
 * 🔔 **Two-Way Webhook Notifications**: Forward incoming WhatsApp replies, user messages, and interactive poll votes back to your backend endpoint in real time.
 * 👥 **Multi-Session Support**: Run and manage multiple linked WhatsApp numbers from a single gateway server instance using session identifiers.
 * 🎫 **Interactive Lists & CTA Buttons**: Support sending rich options lists and tap-action quick replies to clients.
-* ⚙️ **Image/Video Compression Optimization**: Compress large images and re-encode videos on the fly in memory before transmission to reduce mobile data usage.
 
 ---
 
@@ -418,6 +420,7 @@ This error is returned when the gateway API is hit but the WhatsApp client is no
 #### Q2: What does `400 Bad Request` mean?
 This error means your payload has missing or malformed inputs. Common causes:
 * The phone number has invalid formatting (less than 7 or more than 15 digits).
+* The file size of the attachment or sticker exceeds the **maximum 200MB limit**.
 * The request does not contain any message content (no text, attachment, poll, location, etc.).
 * A sub-object is missing required properties (like a location object missing `latitude` or `longitude`).
 
