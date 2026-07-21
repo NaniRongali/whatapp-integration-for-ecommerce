@@ -164,7 +164,7 @@ async function startWhatsAppGateway() {
       printQRInTerminal: false,
       auth: state,
       generateHighQualityLinkPreview: false,
-      browser: ["HRMS Private Gateway", "Chrome", "1.0.0"],
+      browser: ["Swift Project Gateway", "Chrome", "1.0.0"],
     });
 
     sock.ev.on("creds.update", saveCreds);
@@ -362,6 +362,10 @@ const server = http.createServer(async (req, res) => {
         const location = data.location;
         const contact = data.contact;
         const sticker = data.sticker;
+        const poll = data.poll;
+        const reaction = data.reaction;
+        const presence = data.presence;
+        const contactsList = data.contactsList;
 
         if (!rawPhone) {
           res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
@@ -374,12 +378,12 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        if (!messageText && !attachment && !location && !contact && !sticker) {
+        if (!messageText && !attachment && !location && !contact && !sticker && !poll && !reaction && !presence && !contactsList) {
           res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
           res.end(
             JSON.stringify({
               success: false,
-              error: "Missing message content. You must provide one of: 'message', 'attachment', 'location', 'contact', or 'sticker'.",
+              error: "Missing message content. You must provide one of: 'message', 'attachment', 'location', 'contact', 'sticker', 'poll', 'reaction', 'presence', or 'contactsList'.",
             })
           );
           return;
@@ -422,6 +426,40 @@ const server = http.createServer(async (req, res) => {
             res.end(JSON.stringify({ success: false, error: "Missing required 'fullName' or 'phone' fields inside contact." }));
             return;
           }
+        } else if (poll && typeof poll === "object") {
+          const { name, options } = poll;
+          if (!name || !Array.isArray(options) || options.length < 2) {
+            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ success: false, error: "Poll must include a 'name' string and an 'options' array containing at least 2 items." }));
+            return;
+          }
+        } else if (reaction && typeof reaction === "object") {
+          const { emoji, messageId } = reaction;
+          if (!emoji || !messageId) {
+            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ success: false, error: "Reaction must include both 'emoji' and 'messageId'." }));
+            return;
+          }
+        } else if (presence) {
+          const validPresence = ["composing", "recording", "paused", "available", "unavailable"];
+          if (!validPresence.includes(presence)) {
+            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ success: false, error: `Invalid presence value. Must be one of: ${validPresence.join(", ")}` }));
+            return;
+          }
+        } else if (contactsList) {
+          if (!Array.isArray(contactsList) || contactsList.length === 0) {
+            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ success: false, error: "contactsList must be a non-empty array." }));
+            return;
+          }
+          for (const c of contactsList) {
+            if (!c.fullName || !c.phone) {
+              res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+              res.end(JSON.stringify({ success: false, error: "Each contact in contactsList must contain both 'fullName' and 'phone'." }));
+              return;
+            }
+          }
         }
 
         if (!isConnected || !sock) {
@@ -436,19 +474,98 @@ const server = http.createServer(async (req, res) => {
         }
 
         const jid = `${cleaned}@s.whatsapp.net`;
+        const mentionsJids = [];
+        if (Array.isArray(data.mentions)) {
+          data.mentions.forEach(num => {
+            const cleanNum = String(num).replace(/\D/g, "");
+            if (cleanNum) {
+              mentionsJids.push(`${cleanNum}@s.whatsapp.net`);
+            }
+          });
+        }
+
+        const sendOptions = {};
+        if (data.quotedMessageId) {
+          sendOptions.quoted = {
+            key: {
+              remoteJid: jid,
+              fromMe: data.quotedFromMe !== undefined ? data.quotedFromMe : false,
+              id: data.quotedMessageId,
+            },
+            message: {
+              conversation: data.quotedMessageText || "",
+            },
+          };
+        }
 
         console.log(`[Sending Live Baileys WhatsApp] ➡️ To: ${cleaned}`);
 
-        if (location && typeof location === "object") {
-          const { latitude, longitude, name, address } = location;
+        if (presence) {
+          await sock.sendPresenceUpdate(presence, jid);
+        } else if (poll && typeof poll === "object") {
+          await sock.sendMessage(
+            jid,
+            {
+              poll: {
+                name: poll.name,
+                values: poll.options,
+                selectableCount: poll.selectableCount !== undefined ? poll.selectableCount : 1,
+              },
+            },
+            sendOptions
+          );
+        } else if (reaction && typeof reaction === "object") {
+          const { emoji, messageId, fromMe } = reaction;
           await sock.sendMessage(jid, {
-            location: {
-              degreesLatitude: parseFloat(latitude),
-              degreesLongitude: parseFloat(longitude),
-              name: name || "",
-              address: address || "",
+            react: {
+              text: emoji,
+              key: {
+                remoteJid: jid,
+                fromMe: fromMe !== undefined ? fromMe : false,
+                id: messageId,
+              },
             },
           });
+        } else if (contactsList && Array.isArray(contactsList)) {
+          const contacts = contactsList.map((c) => {
+            const fullName = c.fullName;
+            const organization = c.organization || "";
+            const phone = c.phone;
+            const cleanContactPhone = String(phone).replace(/\D/g, "");
+            const vcard =
+              `BEGIN:VCARD\n` +
+              `VERSION:3.0\n` +
+              `FN:${fullName}\n` +
+              (organization ? `ORG:${organization};\n` : "") +
+              `TEL;type=CELL;type=VOICE;waid=${cleanContactPhone}:${phone}\n` +
+              `END:VCARD`;
+            return { displayName: fullName, vcard };
+          });
+
+          await sock.sendMessage(
+            jid,
+            {
+              contacts: {
+                displayName: data.contactsDisplayName || "Shared Contacts",
+                contacts: contacts,
+              },
+            },
+            sendOptions
+          );
+        } else if (location && typeof location === "object") {
+          const { latitude, longitude, name, address } = location;
+          await sock.sendMessage(
+            jid,
+            {
+              location: {
+                degreesLatitude: parseFloat(latitude),
+                degreesLongitude: parseFloat(longitude),
+                name: name || "",
+                address: address || "",
+              },
+            },
+            sendOptions
+          );
         } else if (contact && typeof contact === "object") {
           const { fullName, organization, phone } = contact;
           const cleanContactPhone = String(phone).replace(/\D/g, "");
@@ -460,12 +577,16 @@ const server = http.createServer(async (req, res) => {
             `TEL;type=CELL;type=VOICE;waid=${cleanContactPhone}:${phone}\n` +
             `END:VCARD`;
 
-          await sock.sendMessage(jid, {
-            contacts: {
-              displayName: fullName,
-              contacts: [{ vcard }],
+          await sock.sendMessage(
+            jid,
+            {
+              contacts: {
+                displayName: fullName,
+                contacts: [{ vcard }],
+              },
             },
-          });
+            sendOptions
+          );
         } else if (sticker || (attachment && (attachment.isSticker || (attachment.contentType && attachment.contentType.toLowerCase() === "image/webp")))) {
           let stickerBuffer;
           if (sticker) {
@@ -473,49 +594,46 @@ const server = http.createServer(async (req, res) => {
           } else {
             stickerBuffer = Buffer.from(attachment.contentBase64, "base64");
           }
-          await sock.sendMessage(jid, { sticker: stickerBuffer });
+          await sock.sendMessage(jid, { sticker: stickerBuffer }, sendOptions);
         } else if (attachment && attachment.fileName && attachment.contentBase64) {
           const buffer = Buffer.from(attachment.contentBase64, "base64");
           const mimeType = (attachment.contentType || "").toLowerCase();
           const fileName = attachment.fileName.toLowerCase();
 
-          let messageOptions = {};
+          let messageOptions = {
+            mentions: mentionsJids.length > 0 ? mentionsJids : undefined,
+          };
 
           if (mimeType.startsWith("image/") && !mimeType.includes("gif")) {
-            // Send as inline image preview
-            messageOptions = {
-              image: buffer,
-              caption: messageText || "",
-              mimetype: attachment.contentType,
-            };
+            messageOptions.image = buffer;
+            messageOptions.caption = messageText || "";
+            messageOptions.mimetype = attachment.contentType;
           } else if (mimeType.startsWith("video/") || mimeType.includes("gif") || fileName.endsWith(".gif")) {
-            // Send as inline video, or autoplaying GIF if it's a GIF
-            messageOptions = {
-              video: buffer,
-              caption: messageText || "",
-              mimetype: attachment.contentType || "video/mp4",
-              gifPlayback: mimeType.includes("gif") || fileName.endsWith(".gif"),
-            };
+            messageOptions.video = buffer;
+            messageOptions.caption = messageText || "";
+            messageOptions.mimetype = attachment.contentType || "video/mp4";
+            messageOptions.gifPlayback = mimeType.includes("gif") || fileName.endsWith(".gif");
           } else if (mimeType.startsWith("audio/")) {
-            // Send as audio message
-            messageOptions = {
-              audio: buffer,
-              mimetype: attachment.contentType,
-              caption: messageText || "",
-            };
+            messageOptions.audio = buffer;
+            messageOptions.mimetype = attachment.contentType;
+            messageOptions.caption = messageText || "";
           } else {
-            // Default to document upload (PDF, CSV, doc, xlsx, etc.)
-            messageOptions = {
-              document: buffer,
-              fileName: attachment.fileName,
-              mimetype: attachment.contentType || "application/octet-stream",
-              caption: messageText || "",
-            };
+            messageOptions.document = buffer;
+            messageOptions.fileName = attachment.fileName;
+            messageOptions.mimetype = attachment.contentType || "application/octet-stream";
+            messageOptions.caption = messageText || "";
           }
 
-          await sock.sendMessage(jid, messageOptions);
+          await sock.sendMessage(jid, messageOptions, sendOptions);
         } else {
-          await sock.sendMessage(jid, { text: messageText });
+          await sock.sendMessage(
+            jid,
+            {
+              text: messageText,
+              mentions: mentionsJids.length > 0 ? mentionsJids : undefined,
+            },
+            sendOptions
+          );
         }
 
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });

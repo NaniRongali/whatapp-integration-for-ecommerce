@@ -139,6 +139,104 @@ async function runTests() {
   } else {
     console.log("❌ Failed Test 8");
   }
+
+  // Test 9: Invalid presence type should return 400
+  console.log("\nTest 9: POST / with invalid presence type (expect 400)...");
+  const t9 = await postJSON("/", { to: "9876543210", presence: "dancing" });
+  console.log("Status:", t9.statusCode, "Body:", t9.body);
+  if (t9.statusCode === 400 && t9.body.error && t9.body.error.includes("presence")) {
+    console.log("✅ Passed: Correctly verified presence types.");
+  } else {
+    console.log("❌ Failed Test 9");
+  }
+
+  // Test 10: Invalid reaction (missing emoji) should return 400
+  console.log("\nTest 10: POST / with invalid reaction payload (expect 400)...");
+  const t10 = await postJSON("/", { to: "9876543210", reaction: { messageId: "12345" } });
+  console.log("Status:", t10.statusCode, "Body:", t10.body);
+  if (t10.statusCode === 400 && t10.body.error && t10.body.error.includes("Reaction must include")) {
+    console.log("✅ Passed: Correctly verified reaction fields.");
+  } else {
+    console.log("❌ Failed Test 10");
+  }
+
+  // Test 11: Invalid poll (too few options) should return 400
+  console.log("\nTest 11: POST / with invalid poll payload (expect 400)...");
+  const t11 = await postJSON("/", { to: "9876543210", poll: { name: "Who?", options: ["Only One"] } });
+  console.log("Status:", t11.statusCode, "Body:", t11.body);
+  if (t11.statusCode === 400 && t11.body.error && t11.body.error.includes("Poll must include")) {
+    console.log("✅ Passed: Correctly verified poll options count.");
+  } else {
+    console.log("❌ Failed Test 11");
+  }
+
+  // Test 12: Invalid contactsList (missing phone) should return 400
+  console.log("\nTest 12: POST / with invalid contactsList (expect 400)...");
+  const t12 = await postJSON("/", {
+    to: "9876543210",
+    contactsList: [{ fullName: "John Doe" }],
+  });
+  console.log("Status:", t12.statusCode, "Body:", t12.body);
+  if (t12.statusCode === 400 && t12.body.error && t12.body.error.includes("contactsList must contain both")) {
+    console.log("✅ Passed: Correctly verified contactsList item fields.");
+  } else {
+    console.log("❌ Failed Test 12");
+  }
+
+  // Test 13: Valid Poll Payload (expect 200 or 503)
+  console.log("\nTest 13: POST / with valid poll payload...");
+  const t13 = await postJSON("/", {
+    to: "9876543210",
+    poll: { name: "Do you like JS?", options: ["Yes", "Absolutely!"], selectableCount: 1 },
+  });
+  console.log("Status:", t13.statusCode, "Body:", t13.body);
+  if (t13.statusCode === 200 || t13.statusCode === 503) {
+    console.log("✅ Passed: Got past local validations!");
+  } else {
+    console.log("❌ Failed Test 13");
+  }
+
+  // Test 14: Valid Reaction Payload (expect 200 or 503)
+  console.log("\nTest 14: POST / with valid reaction payload...");
+  const t14 = await postJSON("/", {
+    to: "9876543210",
+    reaction: { emoji: "🔥", messageId: "BAE5XXXXXX" },
+  });
+  console.log("Status:", t14.statusCode, "Body:", t14.body);
+  if (t14.statusCode === 200 || t14.statusCode === 503) {
+    console.log("✅ Passed: Got past local validations!");
+  } else {
+    console.log("❌ Failed Test 14");
+  }
+
+  // Test 15: Valid Presence Payload (expect 200 or 503)
+  console.log("\nTest 15: POST / with valid presence payload...");
+  const t15 = await postJSON("/", {
+    to: "9876543210",
+    presence: "composing",
+  });
+  console.log("Status:", t15.statusCode, "Body:", t15.body);
+  if (t15.statusCode === 200 || t15.statusCode === 503) {
+    console.log("✅ Passed: Got past local validations!");
+  } else {
+    console.log("❌ Failed Test 15");
+  }
+
+  // Test 16: Valid Quoted & Mentions Payload (expect 200 or 503)
+  console.log("\nTest 16: POST / with valid text message including mentions & quoted options...");
+  const t16 = await postJSON("/", {
+    to: "9876543210",
+    message: "Hey @15551234567 look at this reply!",
+    mentions: ["15551234567"],
+    quotedMessageId: "ABC54321",
+    quotedMessageText: "Original text message",
+  });
+  console.log("Status:", t16.statusCode, "Body:", t16.body);
+  if (t16.statusCode === 200 || t16.statusCode === 503) {
+    console.log("✅ Passed: Got past local validations!");
+  } else {
+    console.log("❌ Failed Test 16");
+  }
 }
 
 runTests();
