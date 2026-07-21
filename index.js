@@ -368,6 +368,7 @@ const server = http.createServer(async (req, res) => {
         const contactsList = data.contactsList;
 
         if (!rawPhone) {
+          console.warn("[API Validation Failed]: Rejected request. Missing required 'phone' or 'to' field.");
           res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
           res.end(
             JSON.stringify({
@@ -379,6 +380,7 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (!messageText && !attachment && !location && !contact && !sticker && !poll && !reaction && !presence && !contactsList) {
+          console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Missing message content.`);
           res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
           res.end(
             JSON.stringify({
@@ -402,6 +404,7 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (cleaned.length < 7 || cleaned.length > 15) {
+          console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Normalized number '${cleaned}' must be between 7 and 15 digits.`);
           res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
           res.end(
             JSON.stringify({
@@ -415,6 +418,7 @@ const server = http.createServer(async (req, res) => {
         if (location && typeof location === "object") {
           const { latitude, longitude } = location;
           if (latitude === undefined || longitude === undefined) {
+            console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Missing coordinates inside location.`);
             res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
             res.end(JSON.stringify({ success: false, error: "Missing required 'latitude' or 'longitude' fields inside location." }));
             return;
@@ -422,6 +426,7 @@ const server = http.createServer(async (req, res) => {
         } else if (contact && typeof contact === "object") {
           const { fullName, phone } = contact;
           if (!fullName || !phone) {
+            console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Missing required fields inside contact.`);
             res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
             res.end(JSON.stringify({ success: false, error: "Missing required 'fullName' or 'phone' fields inside contact." }));
             return;
@@ -429,6 +434,7 @@ const server = http.createServer(async (req, res) => {
         } else if (poll && typeof poll === "object") {
           const { name, options } = poll;
           if (!name || !Array.isArray(options) || options.length < 2) {
+            console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Poll must contain a name and at least 2 options.`);
             res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
             res.end(JSON.stringify({ success: false, error: "Poll must include a 'name' string and an 'options' array containing at least 2 items." }));
             return;
@@ -436,6 +442,7 @@ const server = http.createServer(async (req, res) => {
         } else if (reaction && typeof reaction === "object") {
           const { emoji, messageId } = reaction;
           if (!emoji || !messageId) {
+            console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Reaction must include emoji and messageId.`);
             res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
             res.end(JSON.stringify({ success: false, error: "Reaction must include both 'emoji' and 'messageId'." }));
             return;
@@ -443,18 +450,21 @@ const server = http.createServer(async (req, res) => {
         } else if (presence) {
           const validPresence = ["composing", "recording", "paused", "available", "unavailable"];
           if (!validPresence.includes(presence)) {
+            console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Invalid presence value '${presence}'.`);
             res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
             res.end(JSON.stringify({ success: false, error: `Invalid presence value. Must be one of: ${validPresence.join(", ")}` }));
             return;
           }
         } else if (contactsList) {
           if (!Array.isArray(contactsList) || contactsList.length === 0) {
+            console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. contactsList must be a non-empty array.`);
             res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
             res.end(JSON.stringify({ success: false, error: "contactsList must be a non-empty array." }));
             return;
           }
           for (const c of contactsList) {
             if (!c.fullName || !c.phone) {
+              console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Missing contact details inside contactsList item.`);
               res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
               res.end(JSON.stringify({ success: false, error: "Each contact in contactsList must contain both 'fullName' and 'phone'." }));
               return;
@@ -463,6 +473,7 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (!isConnected || !sock) {
+          console.warn(`[Connection Offline]: Cannot deliver to '${cleaned}'. WhatsApp client is disconnected.`);
           res.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
           res.end(
             JSON.stringify({
@@ -498,7 +509,7 @@ const server = http.createServer(async (req, res) => {
           };
         }
 
-        console.log(`[Sending Live Baileys WhatsApp] ➡️ To: ${cleaned}`);
+        console.log(`[WhatsApp API Request] ➡️ Dispatching message to: ${cleaned}...`);
 
         if (presence) {
           await sock.sendPresenceUpdate(presence, jid);
@@ -636,6 +647,7 @@ const server = http.createServer(async (req, res) => {
           );
         }
 
+        console.log(`[WhatsApp API Success] ✅ Message successfully delivered to: ${cleaned}`);
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
         res.end(
           JSON.stringify({
@@ -645,7 +657,7 @@ const server = http.createServer(async (req, res) => {
           })
         );
       } catch (err) {
-        console.error("❌ Dispatch error:", err.message);
+        console.error(`[WhatsApp API Error] ❌ Failed to deliver to: ${cleaned}. Reason: ${err.message}`);
         res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
         res.end(
           JSON.stringify({

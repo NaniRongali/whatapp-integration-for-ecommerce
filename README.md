@@ -19,6 +19,7 @@ This gateway allows any calling application (like a CRM, ERP, Swift Project, or 
 * [Throttling and Delays](#throttling-and-delays)
 * [Inspiration and Warnings](#inspiration-and-warnings)
 * [Testing the Gateway Live](#testing-the-gateway-live)
+* [Message Delivery Logging](#message-delivery-logging)
 * [Code Integration Examples](#code-integration-examples)
 * [Troubleshooting and FAQs](#troubleshooting-and-faqs)
 
@@ -131,12 +132,19 @@ For details on why we built this self-hosted gateway, critical advice regarding 
 
 ## Testing the Gateway Live
 
-To verify all features (typing status, standard texts, locations, contact cards, real WebP stickers, audio files, and interactive polls) are working correctly, you can run the live test script included in the root folder:
+To verify all features (typing status, standard texts, locations, contact cards, real WebP stickers, audio files, and interactive polls) are working correctly, you can run the live test scripts included in the root folder:
 
+### 1. Test All Features (Single Recipient)
 ```bash
 node test-live.js <phone_number>
 ```
-*Replace `<phone_number>` with your target testing phone number (including country code, e.g., `919876543210`). The script will run all 7 validation scenarios sequentially with the safe 2.5-second throttling delay.*
+*Replace `<phone_number>` with your target testing phone number (including country code, e.g., `919876543210`). The script will run all 13 validation scenarios sequentially with the safe 2.5-second throttling delay.*
+
+### 2. Test Multi-Recipient Broadcast (Safe Delays)
+```bash
+node test-broadcast.js <phone_number_1> <phone_number_2> ... <phone_number_N>
+```
+*Provide a list of phone numbers separated by spaces. The script will dispatch a broadcast to each number in the list sequentially, waiting 2.5 seconds between each call to prevent WhatsApp rate limits.*
 
 ---
 
@@ -333,6 +341,57 @@ def broadcast_poll_to_list(numbers_list, poll_name, poll_options):
 # Example usage:
 # broadcast_poll_to_list(["9876543210", "+15551234567"], "Lunch today?", ["Pizza", "Burgers"])
 ```
+
+---
+
+## Message Delivery Logging
+
+The Swift Project Gateway supports detailed logging to help you monitor and debug message delivery. Logs are categorized into two types:
+
+### 1. Client-Side HTTP Responses
+Every time your application calls the gateway API, it receives a detailed JSON response indicating the status:
+* **Success (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "recipient": "919876543210",
+    "message": "WhatsApp message delivered successfully."
+  }
+  ```
+* **Validation Failure (400 Bad Request)**:
+  ```json
+  {
+    "success": false,
+    "error": "Invalid phone number format: '123'. Normalization result '123' must contain 7 to 15 digits."
+  }
+  ```
+* **Offline Client (503 Service Unavailable)**:
+  ```json
+  {
+    "success": false,
+    "error": "WhatsApp gateway client is not ready yet. Please scan the QR code at /qr."
+  }
+  ```
+* **Delivery Error (500 Internal Server Error)**:
+  ```json
+  {
+    "success": false,
+    "error": "Failed to send WhatsApp message: <error details>"
+  }
+  ```
+
+### 2. Server-Side Terminal Console Logs
+The Node.js terminal window printing the gateway service logs will display activity in real time:
+* **Request Received**:
+  `[WhatsApp API Request] ➡️ Dispatching message to: 919876543210...`
+* **Delivery Confirmation**:
+  `[WhatsApp API Success] ✅ Message successfully delivered to: 919876543210`
+* **Validation Rejections**:
+  `[API Validation Failed]: Rejected request for '919876543210'. Missing required 'message' or 'to' field.`
+* **Client Disconnections**:
+  `[Connection Offline]: Cannot deliver to '919876543210'. WhatsApp client is disconnected.`
+* **Fatal Dispatch Errors**:
+  `[WhatsApp API Error] ❌ Failed to deliver to: 919876543210. Reason: <details>`
 
 ---
 
