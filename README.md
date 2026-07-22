@@ -1,6 +1,6 @@
 # Standalone WhatsApp Gateway API
 
-An ultra-lightweight, production-grade, self-hosted Node.js WhatsApp Gateway service built using `@whiskeysockets/baileys`. 
+An ultra-lightweight, production-grade, self-hosted Node.js WhatsApp Gateway service built using `@whiskeysockets/baileys`.
 
 This gateway allows any calling application (like a CRM, ERP, Swift Project, or web backend) to send WhatsApp messages, rich media, location pins, contact cards, stickers, interactive polls, message reactions, group tagging, and presence indicators via simple REST APIs.
 
@@ -12,31 +12,35 @@ This gateway allows any calling application (like a CRM, ERP, Swift Project, or 
 ---
 
 ## Table of Contents
-* [Setup and Execution](#setup-and-execution)
-* [Device Pairing](#device-pairing)
-* [Authentication Rules](#authentication-rules)
-* [Supported Message Types](#supported-message-types)
-* [Throttling and Delays](#throttling-and-delays)
-* [Inspiration and Warnings](#inspiration-and-warnings)
-* [Testing the Gateway Live](#testing-the-gateway-live)
-* [Message Delivery Logging](#message-delivery-logging)
-* [Media Optimization and Limits](docs/media-optimization-and-limits.md)
-* [Code Integration Examples](#code-integration-examples)
-* [Future Features and Roadmap](#future-features-and-roadmap)
-* [Troubleshooting and FAQs](#troubleshooting-and-faqs)
+
+- [Setup and Execution](#setup-and-execution)
+- [Device Pairing](#device-pairing)
+- [Authentication Rules](#authentication-rules)
+- [Supported Message Types](#supported-message-types)
+- [Throttling and Delays](#throttling-and-delays)
+- [Inspiration and Warnings](#inspiration-and-warnings)
+- [Testing the Gateway Live](#testing-the-gateway-live)
+- [Message Delivery Logging](#message-delivery-logging)
+- [Media Optimization and Limits](docs/media-optimization-and-limits.md)
+- [Code Integration Examples](#code-integration-examples)
+- [Troubleshooting and FAQs](#troubleshooting-and-faqs)
 
 ---
 
 ## Setup and Execution
 
 ### 1. Install Dependencies
+
 Ensure you have [Node.js](https://nodejs.org/) (version 18+) installed. Run the following command in the project root directory:
+
 ```bash
 npm install
 ```
 
 ### 2. Configure Environment Variables
+
 Create a file named `.env` in the root directory and add the following parameters:
+
 ```env
 PORT=3001
 
@@ -47,20 +51,26 @@ DEFAULT_COUNTRY_CODE=91
 # If left commented, sessions will save locally to the ".baileys_auth" folder.
 # DATABASE_URL=postgresql://user:password@localhost:5432/dbname
 ```
+
 > [!TIP]
 > Using a PostgreSQL database is highly recommended for production deployments on platforms like Docker, Render, or AWS because local files in virtual containers are deleted on redeploys.
 
 ### 3. Generate a Secure API Token
+
 To protect your gateway from unauthorized use, generate a secure API token:
+
 ```bash
 node generate-token.js
 ```
+
 This script automatically generates a secure 32-byte hex token, updates it in your `.env` file under `WHATSAPP_API_TOKEN`, and prints it out. Keep this token safe!
 
 ### 4. Start the Service
+
 ```bash
 npm start
 ```
+
 The console will start the gateway and display a pairing QR code in the terminal.
 
 ---
@@ -68,6 +78,7 @@ The console will start the gateway and display a pairing QR code in the terminal
 ## Device Pairing
 
 Once started, the gateway must be linked to an active WhatsApp account:
+
 1. Locate the pairing QR code printed in the terminal console.
 2. Alternatively, open your browser and navigate to:
    `http://localhost:3001/qr?token=YOUR_API_TOKEN`
@@ -104,23 +115,23 @@ When `WHATSAPP_API_TOKEN` is set, all incoming HTTP calls require authorization.
 
 To accommodate developers of all experience levels, we have split the message integration guides into dedicated, granular sheets. **Click on each link below to view detailed JSON payload schemas, parameters explanation, and copy-pasteable examples:**
 
-* ✉️ **[Text Messages](docs/text-messages.md)**: How to send standard text messages, format global numbers, and configure default country-code fallbacks.
-* 📁 **[Media and File Attachments](docs/media-attachments.md)**: Sending files (PDF, CSV, Excel, Images, Videos, Audio) in-memory using stateless Base64 encoding.
-* 🔗 **[Direct URL Attachments](docs/direct-url-attachments.md)**: Sending media and files (Stickers, Images, Videos, Documents, Audio) dynamically via direct file Web URLs (lightweight payloads).
-* 📍 **[Location Pins](docs/location-pins.md)**: Sending maps and pin drops using latitude, longitude, and custom names/addresses.
-* 👤 **[Contact Cards (vCards)](docs/contact-cards.md)**: Sharing single or multiple contact cards natively formatted as vCard compliance entries.
-* 🎫 **[Stickers](docs/stickers.md)**: Delivering WebP transparency stickers (512x512 pixels).
-* 📊 **[Interactive Polls](docs/polls.md)**: Sending native polls with custom options and choices selection limits (single vs. multi-select).
-* 🔥 **[Message Reactions](docs/reactions.md)**: Adding, updating, or removing emoji reactions by message ID.
-* 💬 **[Replies and Mentions](docs/replies-and-mentions.md)**: Replying to specific messages (quotes) and tagging/mentioning group members in group JIDs.
-* ⏳ **[Presence Indicators](docs/presence-indicators.md)**: Triggering activity indicators like "typing..." or "recording audio..." in the recipient's header.
+- ✉️ **[Text Messages](docs/text-messages.md)**: How to send standard text messages, format global numbers, and configure default country-code fallbacks.
+- 📁 **[Media and File Attachments](docs/media-attachments.md)**: Sending files (PDF, CSV, Excel, Images, Videos, Audio) in-memory using stateless Base64 encoding.
+- 🔗 **[Direct URL Attachments](docs/direct-url-attachments.md)**: Sending media and files (Stickers, Images, Videos, Documents, Audio) dynamically via direct file Web URLs (lightweight payloads).
+- 📍 **[Location Pins](docs/location-pins.md)**: Sending maps and pin drops using latitude, longitude, and custom names/addresses.
+- 👤 **[Contact Cards (vCards)](docs/contact-cards.md)**: Sharing single or multiple contact cards natively formatted as vCard compliance entries.
+- 🎫 **[Stickers](docs/stickers.md)**: Delivering WebP transparency stickers (512x512 pixels).
+- 📊 **[Interactive Polls](docs/polls.md)**: Sending native polls with custom options and choices selection limits (single vs. multi-select).
+- 🔥 **[Message Reactions](docs/reactions.md)**: Adding, updating, or removing emoji reactions by message ID.
+- 💬 **[Replies and Mentions](docs/replies-and-mentions.md)**: Replying to specific messages (quotes) and tagging/mentioning group members in group JIDs.
+- ⏳ **[Presence Indicators](docs/presence-indicators.md)**: Triggering activity indicators like "typing..." or "recording audio..." in the recipient's header.
 
 ---
 
 ## Throttling and Delays
 
 > [!IMPORTANT]
-> **Account Safety Rule**: WhatsApp monitors anti-spam thresholds. Sending multiple messages too quickly will flag your account and get your number banned. 
+> **Account Safety Rule**: WhatsApp monitors anti-spam thresholds. Sending multiple messages too quickly will flag your account and get your number banned.
 > You **must** introduce a **1.5 to 3-second delay (sleep)** in your loop when broadcasting messages sequentially.
 >
 > For a deep explanation of spam anti-trigger mechanisms and ready-made broadcast loops, see **[Throttling and Broadcast Loop Delays](docs/throttling-and-delays.md)**.
@@ -138,16 +149,20 @@ For details on why we built this self-hosted gateway, critical advice regarding 
 To verify all features (typing status, standard texts, locations, contact cards, real WebP stickers, audio files, and interactive polls) are working correctly, you can run the live test scripts included in the root folder:
 
 ### 1. Test All Features (Single Recipient)
+
 ```bash
 node test-live.js <phone_number>
 ```
-*Replace `<phone_number>` with your target testing phone number (including country code, e.g., `919876543210`). The script will run all 18 validation scenarios sequentially with the safe 2.5-second throttling delay.*
+
+_Replace `<phone_number>` with your target testing phone number (including country code, e.g., `919876543210`). The script will run all 18 validation scenarios sequentially with the safe 2.5-second throttling delay._
 
 ### 2. Test Multi-Recipient Broadcast (Safe Delays)
+
 ```bash
 node test-broadcast.js <phone_number_1> <phone_number_2> ... <phone_number_N>
 ```
-*Provide a list of phone numbers separated by spaces. The script will dispatch a broadcast to each number in the list sequentially, waiting 2.5 seconds between each call to prevent WhatsApp rate limits.*
+
+_Provide a list of phone numbers separated by spaces. The script will dispatch a broadcast to each number in the list sequentially, waiting 2.5 seconds between each call to prevent WhatsApp rate limits._
 
 ---
 
@@ -164,11 +179,11 @@ import fs from "fs";
 import path from "path";
 
 interface SendMessageOptions {
-  to: string;               // Target number (e.g. "+15551234567" or "9876543210")
-  countryCode?: string;     // Optional. Overrides fallback default country code (91)
-  message?: string;         // Required for text/media
-  attachmentPath?: string;  // Optional path to local file
-  contentType?: string;     // e.g. "application/pdf"
+  to: string; // Target number (e.g. "+15551234567" or "9876543210")
+  countryCode?: string; // Optional. Overrides fallback default country code (91)
+  message?: string; // Required for text/media
+  attachmentPath?: string; // Optional path to local file
+  contentType?: string; // e.g. "application/pdf"
   location?: {
     latitude: number;
     longitude: number;
@@ -352,8 +367,10 @@ def broadcast_poll_to_list(numbers_list, poll_name, poll_options):
 The Swift Project Gateway supports detailed logging to help you monitor and debug message delivery. Logs are categorized into two types:
 
 ### 1. Client-Side HTTP Responses
+
 Every time your application calls the gateway API, it receives a detailed JSON response indicating the status:
-* **Success (200 OK)**:
+
+- **Success (200 OK)**:
   ```json
   {
     "success": true,
@@ -361,21 +378,21 @@ Every time your application calls the gateway API, it receives a detailed JSON r
     "message": "WhatsApp message delivered successfully."
   }
   ```
-* **Validation Failure (400 Bad Request)**:
+- **Validation Failure (400 Bad Request)**:
   ```json
   {
     "success": false,
     "error": "Invalid phone number format: '123'. Normalization result '123' must contain 7 to 15 digits."
   }
   ```
-* **Offline Client (503 Service Unavailable)**:
+- **Offline Client (503 Service Unavailable)**:
   ```json
   {
     "success": false,
     "error": "WhatsApp gateway client is not ready yet. Please scan the QR code at /qr."
   }
   ```
-* **Delivery Error (500 Internal Server Error)**:
+- **Delivery Error (500 Internal Server Error)**:
   ```json
   {
     "success": false,
@@ -384,51 +401,47 @@ Every time your application calls the gateway API, it receives a detailed JSON r
   ```
 
 ### 2. Server-Side Terminal Console Logs
+
 The Node.js terminal window printing the gateway service logs will display activity in real time:
-* **Request Received**:
+
+- **Request Received**:
   `[WhatsApp API Request] ➡️ Dispatching message to: 919876543210...`
-* **Delivery Confirmation**:
+- **Delivery Confirmation**:
   `[WhatsApp API Success] ✅ Message successfully delivered to: 919876543210`
-* **Validation Rejections**:
+- **Validation Rejections**:
   `[API Validation Failed]: Rejected request for '919876543210'. Missing required 'message' or 'to' field.`
-* **Client Disconnections**:
+- **Client Disconnections**:
   `[Connection Offline]: Cannot deliver to '919876543210'. WhatsApp client is disconnected.`
-* **Fatal Dispatch Errors**:
+- **Fatal Dispatch Errors**:
   `[WhatsApp API Error] ❌ Failed to deliver to: 919876543210. Reason: <details>`
-
----
-
-## Future Features and Roadmap
-
-To further extend the capabilities of the Swift Project Gateway, the following features are planned for future development and can be integrated as needed:
-
-* **[Completed]** 🔗 **Direct URL Attachments**: Send media/files by passing direct file Web URLs.
-* **[Completed]** ⚙️ **Automated Media Optimization**: Compress images (Jimp 80% quality, max 1600px resizing) and videos (FFmpeg H.264/CRF-28 compression) dynamically in-memory.
-* **[Completed]** 🚯 **Max Payload Safety Checks**: Reject payloads exceeding 200MB to protect memory allocation.
-* 🔔 **Two-Way Webhook Notifications**: Forward incoming WhatsApp replies, user messages, and interactive poll votes back to your backend endpoint in real time.
-* 👥 **Multi-Session Support**: Run and manage multiple linked WhatsApp numbers from a single gateway server instance using session identifiers.
-* 🎫 **Interactive Lists & CTA Buttons**: Support sending rich options lists and tap-action quick replies to clients.
 
 ---
 
 ## Troubleshooting and FAQs
 
 #### Q1: What does `503 Service Unavailable` mean?
+
 This error is returned when the gateway API is hit but the WhatsApp client is not linked.
-* **Fix**: Navigate to `http://localhost:3001/qr?token=YOUR_API_TOKEN` and scan the QR code to pair your device.
+
+- **Fix**: Navigate to `http://localhost:3001/qr?token=YOUR_API_TOKEN` and scan the QR code to pair your device.
 
 #### Q2: What does `400 Bad Request` mean?
+
 This error means your payload has missing or malformed inputs. Common causes:
-* The phone number has invalid formatting (less than 7 or more than 15 digits).
-* The file size of the attachment or sticker exceeds the **maximum 200MB limit**.
-* The request does not contain any message content (no text, attachment, poll, location, etc.).
-* A sub-object is missing required properties (like a location object missing `latitude` or `longitude`).
+
+- The phone number has invalid formatting (less than 7 or more than 15 digits).
+- The file size of the attachment or sticker exceeds the **maximum 200MB limit**.
+- The request does not contain any message content (no text, attachment, poll, location, etc.).
+- A sub-object is missing required properties (like a location object missing `latitude` or `longitude`).
 
 #### Q3: How do I unlink a device or clear the authentication session?
+
 To completely reset the gateway credentials:
+
 1. Stop the Node service.
 2. Delete the `.baileys_auth` folder in the root directory.
 3. Restart the service using `npm start` to generate a fresh pairing QR code.
 
 #### Q4: Why is it slow when I send messages in parallel?
+
 The gateway will process requests as they arrive, but WhatsApp itself serializes message delivery. Trying to bypass delay loops on your client app will result in connection congestion and increases the risk of WhatsApp spam bans. Always use the recommended **1.5 to 3-second delay** in your loop.
