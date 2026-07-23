@@ -19,9 +19,11 @@ if (RECIPIENTS.length === 0) {
   console.log("Example: node test-broadcast.js 919876543210 919999988888\n");
   process.exit(0);
 }
+const SESSION_ID = process.env.SESSION || "default";
+
 function postJSON(data) {
   return new Promise((resolve, reject) => {
-    const payload = JSON.stringify(data);
+    const payload = JSON.stringify({ session: SESSION_ID, ...data });
     const req = http.request(
       `http://localhost:3001/`,
       {

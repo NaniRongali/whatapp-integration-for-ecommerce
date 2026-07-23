@@ -10,6 +10,7 @@ node_modules/
 
 # Baileys session authorization database/files
 .baileys_auth/
+.baileys_auth_*
 
 # Logs
 npm-debug.log*

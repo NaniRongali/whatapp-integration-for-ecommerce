@@ -30,7 +30,10 @@ if (fs.existsSync(envPath)) {
       if (index !== -1) {
         const key = trimmed.substring(0, index).trim();
         let val = trimmed.substring(index + 1).trim();
-        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        if (
+          (val.startsWith('"') && val.endsWith('"')) ||
+          (val.startsWith("'") && val.endsWith("'"))
+        ) {
           val = val.slice(1, -1);
         }
         process.env[key] = val;
@@ -46,16 +49,18 @@ console.log("--------------------------------------------------");
 async function downloadUrlToBuffer(url) {
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`Failed to fetch URL: ${response.statusText} (${response.status})`);
+    throw new Error(
+      `Failed to fetch URL: ${response.statusText} (${response.status})`,
+    );
   }
   const arrayBuffer = await response.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
   const contentType = response.headers.get("content-type") || "";
-  
+
   const parsedUrl = new URL(url);
   const pathname = parsedUrl.pathname;
   let fileName = pathname.substring(pathname.lastIndexOf("/") + 1) || "file";
-  
+
   if (!fileName.includes(".") && contentType) {
     const ext = contentType.split("/")[1];
     if (ext) {
@@ -69,7 +74,11 @@ async function downloadUrlToBuffer(url) {
 async function optimizeImageIfPossible(buffer, contentType) {
   try {
     const mime = (contentType || "").toLowerCase();
-    if (mime.startsWith("image/") && !mime.includes("gif") && !mime.includes("webp")) {
+    if (
+      mime.startsWith("image/") &&
+      !mime.includes("gif") &&
+      !mime.includes("webp")
+    ) {
       const img = await Jimp.read(buffer);
       let resized = false;
       if (img.width > 1600 || img.height > 1600) {
@@ -77,11 +86,15 @@ async function optimizeImageIfPossible(buffer, contentType) {
         resized = true;
       }
       const optimizedBuffer = await img.getBuffer(mime, { quality: 80 });
-      console.log(`[Media Optimization]: Image optimized (quality: 80%, resized: ${resized}). Size reduced from ${buffer.length} to ${optimizedBuffer.length} bytes.`);
+      console.log(
+        `[Media Optimization]: Image optimized (quality: 80%, resized: ${resized}). Size reduced from ${buffer.length} to ${optimizedBuffer.length} bytes.`,
+      );
       return optimizedBuffer;
     }
   } catch (err) {
-    console.warn(`[Media Optimization Alert]: Jimp image processing failed. Using original buffer. Reason: ${err.message}`);
+    console.warn(
+      `[Media Optimization Alert]: Jimp image processing failed. Using original buffer. Reason: ${err.message}`,
+    );
   }
   return buffer;
 }
@@ -99,7 +112,9 @@ function compressVideoIfPossible(buffer) {
     try {
       const ffmpegExists = await isFFmpegAvailable();
       if (!ffmpegExists) {
-        console.log("[Media Optimization]: FFmpeg not installed. Skipping video compression.");
+        console.log(
+          "[Media Optimization]: FFmpeg not installed. Skipping video compression.",
+        );
         resolve(buffer);
         return;
       }
@@ -112,11 +127,13 @@ function compressVideoIfPossible(buffer) {
       fs.writeFileSync(inputPath, buffer);
 
       const command = `ffmpeg -y -i "${inputPath}" -vcodec libx264 -crf 28 -preset superfast -acodec aac -b:a 128k "${outputPath}"`;
-      
+
       exec(command, (err) => {
         try {
           if (err) {
-            console.warn(`[Media Optimization Alert]: FFmpeg video compression failed. Using original buffer. Reason: ${err.message}`);
+            console.warn(
+              `[Media Optimization Alert]: FFmpeg video compression failed. Using original buffer. Reason: ${err.message}`,
+            );
             if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
             resolve(buffer);
             return;
@@ -124,7 +141,9 @@ function compressVideoIfPossible(buffer) {
 
           if (fs.existsSync(outputPath)) {
             const compressedBuffer = fs.readFileSync(outputPath);
-            console.log(`[Media Optimization]: Video optimized (CRF: 28). Size reduced from ${buffer.length} to ${compressedBuffer.length} bytes.`);
+            console.log(
+              `[Media Optimization]: Video optimized (CRF: 28). Size reduced from ${buffer.length} to ${compressedBuffer.length} bytes.`,
+            );
             if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
             if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
             resolve(compressedBuffer);
@@ -133,42 +152,83 @@ function compressVideoIfPossible(buffer) {
             resolve(buffer);
           }
         } catch (e) {
-          console.warn("[Media Optimization Alert]: Video compression cleanup error:", e.message);
+          console.warn(
+            "[Media Optimization Alert]: Video compression cleanup error:",
+            e.message,
+          );
           resolve(buffer);
         }
       });
     } catch (err) {
-      console.warn(`[Media Optimization Alert]: Video processing error. Using original buffer. Reason: ${err.message}`);
+      console.warn(
+        `[Media Optimization Alert]: Video processing error. Using original buffer. Reason: ${err.message}`,
+      );
       resolve(buffer);
     }
   });
 }
 
 const PORT = process.env.PORT || 3001;
-const AUTH_FOLDER = path.join(process.cwd(), ".baileys_auth");
+let dbPool = null;
 
-let sock = null;
-let latestQrCode = null;
-let isConnected = false;
-let authAdapter = null;
+// Registry of all active sessions
+const activeSessions = new Map();
+// Structure of entry:
+// sessionId => { sock, isConnected, latestQrCode, qrTimeout }
 
 // Postgres Session Storage Adapter
-async function usePostgresAuthState(pool) {
+async function usePostgresAuthState(pool, sessionId) {
+  // Perform schema migration if the old whatsapp_session table exists without session_id
   await pool.query(`
     CREATE TABLE IF NOT EXISTS whatsapp_session (
-      key VARCHAR(255) PRIMARY KEY,
-      value TEXT NOT NULL
+      session_id VARCHAR(255) NOT NULL,
+      key VARCHAR(255) NOT NULL,
+      value TEXT NOT NULL,
+      PRIMARY KEY (session_id, key)
     );
   `);
 
+  try {
+    const checkCol = await pool.query(`
+      SELECT column_name FROM information_schema.columns 
+      WHERE table_name = 'whatsapp_session' AND column_name = 'session_id'
+    `);
+    if (checkCol.rows.length === 0) {
+      console.log("Migrating database schema to support Multi-Session...");
+      await pool.query(`
+        ALTER TABLE whatsapp_session RENAME TO whatsapp_session_old;
+        CREATE TABLE whatsapp_session (
+          session_id VARCHAR(255) NOT NULL,
+          key VARCHAR(255) NOT NULL,
+          value TEXT NOT NULL,
+          PRIMARY KEY (session_id, key)
+        );
+        INSERT INTO whatsapp_session (session_id, key, value)
+        SELECT 'default', key, value FROM whatsapp_session_old;
+        DROP TABLE whatsapp_session_old;
+      `);
+      console.log(
+        "🗄️ Database migration complete! All existing credentials migrated to session 'default'.",
+      );
+    }
+  } catch (e) {
+    console.error("Schema migration check error:", e.message);
+  }
+
   const readData = async (key) => {
     try {
-      const res = await pool.query("SELECT value FROM whatsapp_session WHERE key = $1", [key]);
+      const res = await pool.query(
+        "SELECT value FROM whatsapp_session WHERE session_id = $1 AND key = $2",
+        [sessionId, key],
+      );
       if (res.rows.length > 0) {
         return JSON.parse(res.rows[0].value, BufferJSON.reviver);
       }
     } catch (e) {
-      console.error(`Error reading DB key ${key}:`, e.message);
+      console.error(
+        `Error reading DB key ${key} for session ${sessionId}:`,
+        e.message,
+      );
     }
     return null;
   };
@@ -177,20 +237,29 @@ async function usePostgresAuthState(pool) {
     try {
       const str = JSON.stringify(value, BufferJSON.replacer);
       await pool.query(
-        `INSERT INTO whatsapp_session (key, value) VALUES ($1, $2)
-         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
-        [key, str]
+        `INSERT INTO whatsapp_session (session_id, key, value) VALUES ($1, $2, $3)
+         ON CONFLICT (session_id, key) DO UPDATE SET value = EXCLUDED.value`,
+        [sessionId, key, str],
       );
     } catch (e) {
-      console.error(`Error writing DB key ${key}:`, e.message);
+      console.error(
+        `Error writing DB key ${key} for session ${sessionId}:`,
+        e.message,
+      );
     }
   };
 
   const deleteData = async (key) => {
     try {
-      await pool.query("DELETE FROM whatsapp_session WHERE key = $1", [key]);
+      await pool.query(
+        "DELETE FROM whatsapp_session WHERE session_id = $1 AND key = $2",
+        [sessionId, key],
+      );
     } catch (e) {
-      console.error(`Error deleting DB key ${key}:`, e.message);
+      console.error(
+        `Error deleting DB key ${key} for session ${sessionId}:`,
+        e.message,
+      );
     }
   };
 
@@ -209,7 +278,7 @@ async function usePostgresAuthState(pool) {
                 value = proto.Message.AppStateSyncKeyData.fromObject(value);
               }
               data[id] = value;
-            })
+            }),
           );
           return data;
         },
@@ -231,95 +300,222 @@ async function usePostgresAuthState(pool) {
       },
     },
     saveCreds: () => writeData("creds", creds),
-    clearAuth: async () => {
-      try {
-        await pool.query("TRUNCATE TABLE whatsapp_session");
-      } catch (e) {}
-    },
   };
 }
 
-async function getAuthState() {
+async function getAuthState(sessionId) {
   if (process.env.DATABASE_URL) {
     try {
-      console.log("🗄️ Using PostgreSQL Database for 100% Persistent WhatsApp Auth Session");
-      const pool = new Pool({
-        connectionString: process.env.DATABASE_URL,
-        ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined,
-      });
-      authAdapter = await usePostgresAuthState(pool);
-      return authAdapter;
+      if (!dbPool) {
+        dbPool = new Pool({
+          connectionString: process.env.DATABASE_URL,
+          ssl:
+            process.env.NODE_ENV === "production"
+              ? { rejectUnauthorized: false }
+              : undefined,
+        });
+      }
+      return await usePostgresAuthState(dbPool, sessionId);
     } catch (e) {
-      console.error("⚠️ Failed to initialize Postgres auth, falling back to local file auth:", e.message);
+      console.error(
+        `⚠️ Failed to initialize Postgres auth for session ${sessionId}, falling back to local file auth:`,
+        e.message,
+      );
     }
   }
-  console.log("📁 Using local file storage for auth session");
-  authAdapter = await useMultiFileAuthState(AUTH_FOLDER);
-  return authAdapter;
+  const folder = path.join(process.cwd(), `.baileys_auth_${sessionId}`);
+  return await useMultiFileAuthState(folder);
 }
 
-async function startWhatsAppGateway() {
+async function clearSessionAuth(sessionId) {
+  if (process.env.DATABASE_URL && dbPool) {
+    try {
+      await dbPool.query("DELETE FROM whatsapp_session WHERE session_id = $1", [
+        sessionId,
+      ]);
+    } catch (e) {
+      console.error(
+        `Error clearing DB credentials for session ${sessionId}:`,
+        e.message,
+      );
+    }
+  }
+  const folder = path.join(process.cwd(), `.baileys_auth_${sessionId}`);
   try {
-    const { state, saveCreds } = await getAuthState();
-    const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: [2, 3000, 1015901307] }));
+    fs.rmSync(folder, { recursive: true, force: true });
+  } catch (e) {}
+}
 
-    sock = makeWASocket({
-      version,
-      logger: pino({ level: "silent" }),
-      printQRInTerminal: false,
-      auth: state,
-      generateHighQualityLinkPreview: false,
-      browser: ["Swift Project Gateway", "Chrome", "1.0.0"],
-    });
+function getOrInitSession(sessionId) {
+  if (activeSessions.has(sessionId)) {
+    return activeSessions.get(sessionId);
+  }
 
-    sock.ev.on("creds.update", saveCreds);
+  const sessionData = {
+    sock: null,
+    isConnected: false,
+    latestQrCode: null,
+  };
+  activeSessions.set(sessionId, sessionData);
 
-    sock.ev.on("connection.update", async (update) => {
-      const { connection, lastDisconnect, qr } = update;
-      if (qr) {
-        latestQrCode = qr;
-        console.log("\n📲 SCAN THIS QR CODE WITH YOUR WHATSAPP APP (Linked Devices):\n");
-        qrcodeTerminal.generate(qr, { small: true });
-        console.log(`\nOr view web QR code at: http://localhost:${PORT}/qr\n`);
-      }
+  const initialize = async () => {
+    try {
+      const { state, saveCreds } = await getAuthState(sessionId);
+      const { version } = await fetchLatestBaileysVersion().catch(() => ({
+        version: [2, 3000, 1015901307],
+      }));
 
-      if (connection === "close") {
-        isConnected = false;
-        const statusCode = lastDisconnect?.error?.output?.statusCode;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-        console.log(`⚠️ Connection closed (status ${statusCode}). Reconnecting: ${shouldReconnect}`);
+      console.log(`[Session: ${sessionId}] 🔌 Initializing socket...`);
 
-        if (shouldReconnect) {
-          setTimeout(startWhatsAppGateway, 3000);
-        } else {
-          console.log("❌ Device logged out. Clearing authentication session...");
-          latestQrCode = null;
-          if (authAdapter && authAdapter.clearAuth) {
-            await authAdapter.clearAuth();
-          }
-          try {
-            fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
-          } catch (e) {}
-          setTimeout(startWhatsAppGateway, 3000);
+      const sock = makeWASocket({
+        version,
+        logger: pino({ level: "silent" }),
+        printQRInTerminal: false,
+        auth: state,
+        generateHighQualityLinkPreview: false,
+        browser: ["Swift Project Gateway", "Chrome", "1.0.0"],
+      });
+
+      sessionData.sock = sock;
+
+      sock.ev.on("creds.update", saveCreds);
+
+      sock.ev.on("connection.update", async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+        if (qr) {
+          sessionData.latestQrCode = qr;
+          console.log(
+            `[Session: ${sessionId}] 📲 QR Code updated. View at: http://localhost:${PORT}/qr?session=${sessionId}`,
+          );
         }
-      } else if (connection === "open") {
-        isConnected = true;
-        latestQrCode = null;
-        console.log("--------------------------------------------------");
-        console.log(`🎉 WhatsApp Gateway is ACTIVE and READY on PORT ${PORT}`);
-        console.log("--------------------------------------------------");
+
+        if (connection === "close") {
+          sessionData.isConnected = false;
+          const statusCode = lastDisconnect?.error?.output?.statusCode;
+          const shouldReconnect =
+            statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
+
+          console.log(
+            `[Session: ${sessionId}] ⚠️ Connection closed (status ${statusCode}). Reconnecting: ${shouldReconnect}`,
+          );
+
+          if (shouldReconnect) {
+            setTimeout(initialize, 3000);
+          } else {
+            console.log(
+              `[Session: ${sessionId}] ❌ Device logged out. Clearing authentication...`,
+            );
+            sessionData.latestQrCode = null;
+            await clearSessionAuth(sessionId);
+            activeSessions.delete(sessionId);
+
+            // Re-init as fresh session immediately
+            setTimeout(() => getOrInitSession(sessionId), 3000);
+          }
+        } else if (connection === "open") {
+          sessionData.isConnected = true;
+          sessionData.latestQrCode = null;
+          console.log(
+            `[Session: ${sessionId}] ✅ Connected to WhatsApp successfully! User: ${sock.user?.id || ""}`,
+          );
+        }
+      });
+    } catch (err) {
+      console.error(
+        `[Session: ${sessionId}] ❌ Socket initialization failed:`,
+        err.message,
+      );
+      setTimeout(initialize, 5000);
+    }
+  };
+
+  initialize();
+  return sessionData;
+}
+
+async function getStoredSessionsFromDb() {
+  if (process.env.DATABASE_URL) {
+    try {
+      if (!dbPool) {
+        dbPool = new Pool({
+          connectionString: process.env.DATABASE_URL,
+          ssl:
+            process.env.NODE_ENV === "production"
+              ? { rejectUnauthorized: false }
+              : undefined,
+        });
       }
-    });
-  } catch (err) {
-    console.error("❌ Gateway initialization error:", err);
-    setTimeout(startWhatsAppGateway, 5000);
+      const res = await dbPool.query(
+        "SELECT DISTINCT session_id FROM whatsapp_session",
+      );
+      return res.rows.map((row) => row.session_id);
+    } catch (e) {
+      console.error("Error listing stored DB sessions:", e.message);
+    }
+  }
+  return [];
+}
+
+function getStoredSessionsFromFiles() {
+  try {
+    const files = fs.readdirSync(process.cwd());
+    const sessions = [];
+    for (const file of files) {
+      if (
+        file.startsWith(".baileys_auth_") &&
+        fs.statSync(file).isDirectory()
+      ) {
+        const sessionId = file.replace(".baileys_auth_", "");
+        if (sessionId) {
+          sessions.push(sessionId);
+        }
+      }
+    }
+    return sessions;
+  } catch (e) {
+    return [];
   }
 }
 
-startWhatsAppGateway();
+async function loadAllStoredSessions() {
+  try {
+    const dbSessions = await getStoredSessionsFromDb();
+    const fileSessions = getStoredSessionsFromFiles();
+    const allSessions = Array.from(new Set([...dbSessions, ...fileSessions]));
+
+    if (allSessions.length === 0) {
+      allSessions.push("default");
+    }
+
+    console.log(
+      `📡 Restoring ${allSessions.length} active WhatsApp sessions: [${allSessions.join(", ")}]...`,
+    );
+    for (const sessionId of allSessions) {
+      getOrInitSession(sessionId);
+    }
+  } catch (e) {
+    console.error("Error autoloading sessions:", e.message);
+    getOrInitSession("default");
+  }
+}
+
+// Start all sessions on boot
+loadAllStoredSessions();
 
 // HTTP Gateway Server
 const API_TOKEN = process.env.WHATSAPP_API_TOKEN;
+
+function isAuthorized(req, url, bodyData = {}) {
+  if (!API_TOKEN) return true;
+  const authHeader = req.headers["authorization"];
+  const queryToken = url.searchParams.get("token");
+  const bodyToken = bodyData.token;
+
+  if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
+    return authHeader.substring(7).trim() === API_TOKEN;
+  }
+  return queryToken === API_TOKEN || bodyToken === API_TOKEN;
+}
 
 const server = http.createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -334,46 +530,119 @@ const server = http.createServer(async (req, res) => {
 
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
-  // Web Display & QR Display Route
-  if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/qr" || url.pathname === "/qr/")) {
-    if (API_TOKEN) {
-      const authHeader = req.headers["authorization"];
-      const queryToken = url.searchParams.get("token");
-      let authorized = false;
-
-      if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
-        authorized = authHeader.substring(7).trim() === API_TOKEN;
-      } else if (queryToken === API_TOKEN) {
-        authorized = true;
-      }
-
-      if (!authorized) {
-        res.writeHead(401, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(
-          JSON.stringify({
-            success: false,
-            error: "Unauthorized. Please specify a valid 'token' query parameter or Authorization Bearer header.",
-          })
-        );
-        return;
-      }
+  // 1. GET /sessions - list all active sessions
+  if (req.method === "GET" && url.pathname === "/sessions") {
+    if (!isAuthorized(req, url)) {
+      res.writeHead(401, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(
+        JSON.stringify({
+          success: false,
+          error: "Unauthorized. Invalid or missing API token.",
+        }),
+      );
+      return;
     }
 
+    const sessionsList = [];
+    for (const [id, sData] of activeSessions.entries()) {
+      sessionsList.push({
+        id,
+        status: sData.isConnected
+          ? "CONNECTED"
+          : sData.latestQrCode
+            ? "PENDING_SCAN"
+            : "INITIALIZING",
+        phone: sData.sock?.user?.id
+          ? sData.sock.user.id.split(":")[0].split("@")[0]
+          : null,
+      });
+    }
+
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ success: true, sessions: sessionsList }));
+    return;
+  }
+
+  // 2. GET /status - status of a single session
+  if (req.method === "GET" && url.pathname === "/status") {
+    if (!isAuthorized(req, url)) {
+      res.writeHead(401, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(
+        JSON.stringify({
+          success: false,
+          error: "Unauthorized. Invalid or missing API token.",
+        }),
+      );
+      return;
+    }
+
+    const sessionId = url.searchParams.get("session") || "default";
+    const sData = activeSessions.get(sessionId);
+
+    if (!sData) {
+      res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(
+        JSON.stringify({
+          success: false,
+          error: `Session '${sessionId}' not found.`,
+        }),
+      );
+      return;
+    }
+
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(
+      JSON.stringify({
+        success: true,
+        session: sessionId,
+        status: sData.isConnected
+          ? "CONNECTED"
+          : sData.latestQrCode
+            ? "PENDING_SCAN"
+            : "INITIALIZING",
+        phone: sData.sock?.user?.id
+          ? sData.sock.user.id.split(":")[0].split("@")[0]
+          : null,
+      }),
+    );
+    return;
+  }
+
+  // 3. GET /qr or / - Web Display & QR Display Route
+  if (
+    req.method === "GET" &&
+    (url.pathname === "/" || url.pathname === "/qr" || url.pathname === "/qr/")
+  ) {
+    if (!isAuthorized(req, url)) {
+      res.writeHead(401, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(
+        JSON.stringify({
+          success: false,
+          error: "Unauthorized. Invalid or missing API token.",
+        }),
+      );
+      return;
+    }
+
+    const sessionId = url.searchParams.get("session") || "default";
+    const session = getOrInitSession(sessionId);
+
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    if (isConnected) {
+    if (session.isConnected) {
       res.end(`
         <!DOCTYPE html>
         <html>
           <head>
             <meta charset="utf-8">
-            <title>WhatsApp Gateway Active</title>
+            <title>WhatsApp Gateway Active - Session: ${sessionId}</title>
             <meta http-equiv="refresh" content="5">
           </head>
           <body style="font-family:system-ui,-apple-system,sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f0fdf4; color:#166534; margin:0;">
             <div style="background:white; padding:40px; border-radius:24px; box-shadow:0 10px 25px rgba(0,0,0,0.05); text-align:center; max-width:400px; width:90%;">
               <div style="font-size:48px; margin-bottom:12px;">🎉</div>
-              <h2 style="margin:0 0 10px 0; color:#15803d;">WhatsApp Gateway Active</h2>
-              <p style="color:#475569; font-size:14px; line-height:1.5; margin:0;">Your WhatsApp device is linked and ready to send broadcasts.</p>
+              <h2 style="margin:0 0 10px 0; color:#15803d;">WhatsApp Session Active</h2>
+              <p style="color:#475569; font-size:14px; line-height:1.5; margin:0 0 16px 0;">Session <strong>${sessionId}</strong> is linked and ready to send broadcasts.</p>
+              <span style="background:#dcfce7; padding:6px 12px; border-radius:12px; font-size:12px; font-weight:bold; color:#166534;">Connected JID: ${session.sock?.user?.id ? session.sock.user.id.split(":")[0] : ""}</span>
             </div>
           </body>
         </html>
@@ -381,22 +650,26 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (latestQrCode) {
+    if (session.latestQrCode) {
       try {
-        const qrImageDataUrl = await QRCode.toDataURL(latestQrCode, { width: 300, margin: 2 });
+        const qrImageDataUrl = await QRCode.toDataURL(session.latestQrCode, {
+          width: 300,
+          margin: 2,
+        });
         res.end(`
           <!DOCTYPE html>
           <html>
             <head>
               <meta charset="utf-8">
-              <title>Scan WhatsApp QR Code</title>
+              <title>Scan QR Code - Session: ${sessionId}</title>
               <meta http-equiv="refresh" content="6">
             </head>
             <body style="font-family:system-ui,-apple-system,sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; background:#f8fafc; color:#0f172a; margin:0; padding:20px;">
               <div style="background:white; padding:32px; border-radius:24px; box-shadow:0 20px 40px rgba(0,0,0,0.08); text-align:center; max-width:360px; width:100%;">
                 <div style="font-size:36px; margin-bottom:8px;">📲</div>
-                <h3 style="margin:0 0 8px 0; font-size:20px; color:#0f172a;">Link WhatsApp Device</h3>
-                <p style="color:#64748b; font-size:13px; margin:0 0 20px 0;">Open WhatsApp ➔ Linked Devices ➔ Scan QR Code</p>
+                <h3 style="margin:0 0 8px 0; font-size:20px; color:#0f172a;">Link WhatsApp Session</h3>
+                <p style="color:#64748b; font-size:13px; margin:0 0 6px 0;">Session ID: <strong>${sessionId}</strong></p>
+                <p style="color:#94a3b8; font-size:12px; margin:0 0 20px 0;">Open WhatsApp ➔ Linked Devices ➔ Scan QR Code</p>
                 <img src="${qrImageDataUrl}" alt="WhatsApp QR Code" style="width:260px; height:260px; border-radius:16px; border:1px solid #e2e8f0; padding:8px;" />
                 <p style="color:#94a3b8; font-size:11px; margin:16px 0 0 0;">Auto-refreshes every 6 seconds</p>
               </div>
@@ -414,13 +687,13 @@ const server = http.createServer(async (req, res) => {
       <html>
         <head>
           <meta charset="utf-8">
-          <title>Initializing WhatsApp Gateway</title>
+          <title>Initializing WhatsApp Session: ${sessionId}</title>
           <meta http-equiv="refresh" content="3">
         </head>
         <body style="font-family:system-ui,-apple-system,sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f8fafc; color:#475569; margin:0;">
           <div style="background:white; padding:32px; border-radius:24px; text-align:center; box-shadow:0 10px 25px rgba(0,0,0,0.05);">
             <div style="font-size:36px; margin-bottom:10px;">⏳</div>
-            <h3 style="margin:0 0 8px 0; color:#0f172a;">Initializing WhatsApp Gateway...</h3>
+            <h3 style="margin:0 0 8px 0; color:#0f172a;">Initializing Session '${sessionId}'...</h3>
             <p style="margin:0; font-size:13px; color:#64748b;">Please wait a few seconds for the QR code to load.</p>
           </div>
         </body>
@@ -455,13 +728,25 @@ const server = http.createServer(async (req, res) => {
           }
 
           if (!authorized) {
-            res.writeHead(401, { "Content-Type": "application/json; charset=utf-8" });
-            res.end(JSON.stringify({ success: false, error: "Unauthorized. Invalid or missing API token." }));
+            res.writeHead(401, {
+              "Content-Type": "application/json; charset=utf-8",
+            });
+            res.end(
+              JSON.stringify({
+                success: false,
+                error: "Unauthorized. Invalid or missing API token.",
+              }),
+            );
             return;
           }
         }
 
-        const rawPhone = data.phone || data.to || (data.phoneNumbers && data.phoneNumbers[0]);
+        const sessionId =
+          data.session || url.searchParams.get("session") || "default";
+        const session = getOrInitSession(sessionId);
+
+        const rawPhone =
+          data.phone || data.to || (data.phoneNumbers && data.phoneNumbers[0]);
         const messageText = data.message || data.body;
         const attachment = data.attachment;
         const location = data.location;
@@ -473,25 +758,44 @@ const server = http.createServer(async (req, res) => {
         const contactsList = data.contactsList;
 
         if (!rawPhone) {
-          console.warn("[API Validation Failed]: Rejected request. Missing required 'phone' or 'to' field.");
-          res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+          console.warn(
+            "[API Validation Failed]: Rejected request. Missing required 'phone' or 'to' field.",
+          );
+          res.writeHead(400, {
+            "Content-Type": "application/json; charset=utf-8",
+          });
           res.end(
             JSON.stringify({
               success: false,
               error: "Missing required 'phone' or 'to' field.",
-            })
+            }),
           );
           return;
         }
 
-        if (!messageText && !attachment && !location && !contact && !sticker && !poll && !reaction && !presence && !contactsList) {
-          console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Missing message content.`);
-          res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        if (
+          !messageText &&
+          !attachment &&
+          !location &&
+          !contact &&
+          !sticker &&
+          !poll &&
+          !reaction &&
+          !presence &&
+          !contactsList
+        ) {
+          console.warn(
+            `[API Validation Failed]: Rejected request for '${rawPhone}'. Missing message content.`,
+          );
+          res.writeHead(400, {
+            "Content-Type": "application/json; charset=utf-8",
+          });
           res.end(
             JSON.stringify({
               success: false,
-              error: "Missing message content. You must provide one of: 'message', 'attachment', 'location', 'contact', 'sticker', 'poll', 'reaction', 'presence', or 'contactsList'.",
-            })
+              error:
+                "Missing message content. You must provide one of: 'message', 'attachment', 'location', 'contact', 'sticker', 'poll', 'reaction', 'presence', or 'contactsList'.",
+            }),
           );
           return;
         }
@@ -509,97 +813,193 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (cleaned.length < 7 || cleaned.length > 15) {
-          console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Normalized number '${cleaned}' must be between 7 and 15 digits.`);
-          res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+          console.warn(
+            `[API Validation Failed]: Rejected request for '${rawPhone}'. Normalized number '${cleaned}' must be between 7 and 15 digits.`,
+          );
+          res.writeHead(400, {
+            "Content-Type": "application/json; charset=utf-8",
+          });
           res.end(
             JSON.stringify({
               success: false,
               error: `Invalid phone number format: '${rawPhone}'. Normalization result '${cleaned}' must contain 7 to 15 digits.`,
-            })
+            }),
           );
           return;
         }
 
         if (attachment && typeof attachment === "object") {
-          if (!attachment.url && (!attachment.fileName || !attachment.contentBase64)) {
-            console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Attachment must include 'url' or both 'fileName' and 'contentBase64'.`);
-            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-            res.end(JSON.stringify({ success: false, error: "Attachment must include either 'url' or both 'fileName' and 'contentBase64'." }));
+          if (
+            !attachment.url &&
+            (!attachment.fileName || !attachment.contentBase64)
+          ) {
+            console.warn(
+              `[API Validation Failed]: Rejected request for '${rawPhone}'. Attachment must include 'url' or both 'fileName' and 'contentBase64'.`,
+            );
+            res.writeHead(400, {
+              "Content-Type": "application/json; charset=utf-8",
+            });
+            res.end(
+              JSON.stringify({
+                success: false,
+                error:
+                  "Attachment must include either 'url' or both 'fileName' and 'contentBase64'.",
+              }),
+            );
             return;
           }
         } else if (location && typeof location === "object") {
           const { latitude, longitude } = location;
           if (latitude === undefined || longitude === undefined) {
-            console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Missing coordinates inside location.`);
-            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-            res.end(JSON.stringify({ success: false, error: "Missing required 'latitude' or 'longitude' fields inside location." }));
+            console.warn(
+              `[API Validation Failed]: Rejected request for '${rawPhone}'. Missing coordinates inside location.`,
+            );
+            res.writeHead(400, {
+              "Content-Type": "application/json; charset=utf-8",
+            });
+            res.end(
+              JSON.stringify({
+                success: false,
+                error:
+                  "Missing required 'latitude' or 'longitude' fields inside location.",
+              }),
+            );
             return;
           }
         } else if (contact && typeof contact === "object") {
           const { fullName, phone } = contact;
           if (!fullName || !phone) {
-            console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Missing required fields inside contact.`);
-            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-            res.end(JSON.stringify({ success: false, error: "Missing required 'fullName' or 'phone' fields inside contact." }));
+            console.warn(
+              `[API Validation Failed]: Rejected request for '${rawPhone}'. Missing required fields inside contact.`,
+            );
+            res.writeHead(400, {
+              "Content-Type": "application/json; charset=utf-8",
+            });
+            res.end(
+              JSON.stringify({
+                success: false,
+                error:
+                  "Missing required 'fullName' or 'phone' fields inside contact.",
+              }),
+            );
             return;
           }
         } else if (poll && typeof poll === "object") {
           const { name, options } = poll;
           if (!name || !Array.isArray(options) || options.length < 2) {
-            console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Poll must contain a name and at least 2 options.`);
-            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-            res.end(JSON.stringify({ success: false, error: "Poll must include a 'name' string and an 'options' array containing at least 2 items." }));
+            console.warn(
+              `[API Validation Failed]: Rejected request for '${rawPhone}'. Poll must contain a name and at least 2 options.`,
+            );
+            res.writeHead(400, {
+              "Content-Type": "application/json; charset=utf-8",
+            });
+            res.end(
+              JSON.stringify({
+                success: false,
+                error:
+                  "Poll must include a 'name' string and an 'options' array containing at least 2 items.",
+              }),
+            );
             return;
           }
         } else if (reaction && typeof reaction === "object") {
           const { emoji, messageId } = reaction;
           if (!emoji || !messageId) {
-            console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Reaction must include emoji and messageId.`);
-            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-            res.end(JSON.stringify({ success: false, error: "Reaction must include both 'emoji' and 'messageId'." }));
+            console.warn(
+              `[API Validation Failed]: Rejected request for '${rawPhone}'. Reaction must include emoji and messageId.`,
+            );
+            res.writeHead(400, {
+              "Content-Type": "application/json; charset=utf-8",
+            });
+            res.end(
+              JSON.stringify({
+                success: false,
+                error: "Reaction must include both 'emoji' and 'messageId'.",
+              }),
+            );
             return;
           }
         } else if (presence) {
-          const validPresence = ["composing", "recording", "paused", "available", "unavailable"];
+          const validPresence = [
+            "composing",
+            "recording",
+            "paused",
+            "available",
+            "unavailable",
+          ];
           if (!validPresence.includes(presence)) {
-            console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Invalid presence value '${presence}'.`);
-            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-            res.end(JSON.stringify({ success: false, error: `Invalid presence value. Must be one of: ${validPresence.join(", ")}` }));
+            console.warn(
+              `[API Validation Failed]: Rejected request for '${rawPhone}'. Invalid presence value '${presence}'.`,
+            );
+            res.writeHead(400, {
+              "Content-Type": "application/json; charset=utf-8",
+            });
+            res.end(
+              JSON.stringify({
+                success: false,
+                error: `Invalid presence value. Must be one of: ${validPresence.join(", ")}`,
+              }),
+            );
             return;
           }
         } else if (contactsList) {
           if (!Array.isArray(contactsList) || contactsList.length === 0) {
-            console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. contactsList must be a non-empty array.`);
-            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-            res.end(JSON.stringify({ success: false, error: "contactsList must be a non-empty array." }));
+            console.warn(
+              `[API Validation Failed]: Rejected request for '${rawPhone}'. contactsList must be a non-empty array.`,
+            );
+            res.writeHead(400, {
+              "Content-Type": "application/json; charset=utf-8",
+            });
+            res.end(
+              JSON.stringify({
+                success: false,
+                error: "contactsList must be a non-empty array.",
+              }),
+            );
             return;
           }
           for (const c of contactsList) {
             if (!c.fullName || !c.phone) {
-              console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Missing contact details inside contactsList item.`);
-              res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-              res.end(JSON.stringify({ success: false, error: "Each contact in contactsList must contain both 'fullName' and 'phone'." }));
+              console.warn(
+                `[API Validation Failed]: Rejected request for '${rawPhone}'. Missing contact details inside contactsList item.`,
+              );
+              res.writeHead(400, {
+                "Content-Type": "application/json; charset=utf-8",
+              });
+              res.end(
+                JSON.stringify({
+                  success: false,
+                  error:
+                    "Each contact in contactsList must contain both 'fullName' and 'phone'.",
+                }),
+              );
               return;
             }
           }
         }
 
-        if (!isConnected || !sock) {
-          console.warn(`[Connection Offline]: Cannot deliver to '${cleaned}'. WhatsApp client is disconnected.`);
-          res.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
+        if (!session.isConnected || !session.sock) {
+          console.warn(
+            `[Connection Offline]: Cannot deliver to '${cleaned}'. Session '${sessionId}' is disconnected.`,
+          );
+          res.writeHead(503, {
+            "Content-Type": "application/json; charset=utf-8",
+          });
           res.end(
             JSON.stringify({
               success: false,
-              error: "WhatsApp gateway client is not ready yet. Please scan the QR code at /qr.",
-            })
+              error: `WhatsApp gateway session '${sessionId}' is not ready yet. Please scan the QR code at /qr?session=${sessionId}`,
+            }),
           );
           return;
         }
 
+        const sock = session.sock;
+
         const jid = `${cleaned}@s.whatsapp.net`;
         const mentionsJids = [];
         if (Array.isArray(data.mentions)) {
-          data.mentions.forEach(num => {
+          data.mentions.forEach((num) => {
             const cleanNum = String(num).replace(/\D/g, "");
             if (cleanNum) {
               mentionsJids.push(`${cleanNum}@s.whatsapp.net`);
@@ -612,7 +1012,8 @@ const server = http.createServer(async (req, res) => {
           sendOptions.quoted = {
             key: {
               remoteJid: jid,
-              fromMe: data.quotedFromMe !== undefined ? data.quotedFromMe : false,
+              fromMe:
+                data.quotedFromMe !== undefined ? data.quotedFromMe : false,
               id: data.quotedMessageId,
             },
             message: {
@@ -621,7 +1022,9 @@ const server = http.createServer(async (req, res) => {
           };
         }
 
-        console.log(`[WhatsApp API Request] ➡️ Dispatching message to: ${cleaned}...`);
+        console.log(
+          `[WhatsApp API Request] ➡️ Dispatching message to: ${cleaned}...`,
+        );
 
         if (presence) {
           await sock.sendPresenceUpdate(presence, jid);
@@ -632,10 +1035,11 @@ const server = http.createServer(async (req, res) => {
               poll: {
                 name: poll.name,
                 values: poll.options,
-                selectableCount: poll.selectableCount !== undefined ? poll.selectableCount : 1,
+                selectableCount:
+                  poll.selectableCount !== undefined ? poll.selectableCount : 1,
               },
             },
-            sendOptions
+            sendOptions,
           );
         } else if (reaction && typeof reaction === "object") {
           const { emoji, messageId, fromMe } = reaction;
@@ -673,7 +1077,7 @@ const server = http.createServer(async (req, res) => {
                 contacts: contacts,
               },
             },
-            sendOptions
+            sendOptions,
           );
         } else if (location && typeof location === "object") {
           const { latitude, longitude, name, address } = location;
@@ -687,7 +1091,7 @@ const server = http.createServer(async (req, res) => {
                 address: address || "",
               },
             },
-            sendOptions
+            sendOptions,
           );
         } else if (contact && typeof contact === "object") {
           const { fullName, organization, phone } = contact;
@@ -708,12 +1112,21 @@ const server = http.createServer(async (req, res) => {
                 contacts: [{ vcard }],
               },
             },
-            sendOptions
+            sendOptions,
           );
-        } else if (sticker || (attachment && (attachment.isSticker || (attachment.contentType && attachment.contentType.toLowerCase() === "image/webp")))) {
+        } else if (
+          sticker ||
+          (attachment &&
+            (attachment.isSticker ||
+              (attachment.contentType &&
+                attachment.contentType.toLowerCase() === "image/webp")))
+        ) {
           let stickerBuffer;
           if (sticker) {
-            if (sticker.startsWith("http://") || sticker.startsWith("https://")) {
+            if (
+              sticker.startsWith("http://") ||
+              sticker.startsWith("https://")
+            ) {
               const download = await downloadUrlToBuffer(sticker);
               stickerBuffer = download.buffer;
             } else {
@@ -730,9 +1143,18 @@ const server = http.createServer(async (req, res) => {
 
           const MAX_SIZE = 200 * 1024 * 1024;
           if (stickerBuffer.length > MAX_SIZE) {
-            console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Sticker size (${(stickerBuffer.length / (1024 * 1024)).toFixed(1)}MB) exceeds the 200MB limit.`);
-            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-            res.end(JSON.stringify({ success: false, error: "File size exceeds the maximum limit of 200MB." }));
+            console.warn(
+              `[API Validation Failed]: Rejected request for '${rawPhone}'. Sticker size (${(stickerBuffer.length / (1024 * 1024)).toFixed(1)}MB) exceeds the 200MB limit.`,
+            );
+            res.writeHead(400, {
+              "Content-Type": "application/json; charset=utf-8",
+            });
+            res.end(
+              JSON.stringify({
+                success: false,
+                error: "File size exceeds the maximum limit of 200MB.",
+              }),
+            );
             return;
           }
 
@@ -745,8 +1167,16 @@ const server = http.createServer(async (req, res) => {
           if (attachment.url) {
             const download = await downloadUrlToBuffer(attachment.url);
             buffer = download.buffer;
-            mimeType = (attachment.contentType || download.contentType || "").toLowerCase();
-            fileName = (attachment.fileName || download.fileName || "file").toLowerCase();
+            mimeType = (
+              attachment.contentType ||
+              download.contentType ||
+              ""
+            ).toLowerCase();
+            fileName = (
+              attachment.fileName ||
+              download.fileName ||
+              "file"
+            ).toLowerCase();
           } else {
             buffer = Buffer.from(attachment.contentBase64, "base64");
             mimeType = (attachment.contentType || "").toLowerCase();
@@ -755,15 +1185,31 @@ const server = http.createServer(async (req, res) => {
 
           const MAX_SIZE = 200 * 1024 * 1024;
           if (buffer.length > MAX_SIZE) {
-            console.warn(`[API Validation Failed]: Rejected request for '${rawPhone}'. Attachment size (${(buffer.length / (1024 * 1024)).toFixed(1)}MB) exceeds the 200MB limit.`);
-            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-            res.end(JSON.stringify({ success: false, error: "File size exceeds the maximum limit of 200MB." }));
+            console.warn(
+              `[API Validation Failed]: Rejected request for '${rawPhone}'. Attachment size (${(buffer.length / (1024 * 1024)).toFixed(1)}MB) exceeds the 200MB limit.`,
+            );
+            res.writeHead(400, {
+              "Content-Type": "application/json; charset=utf-8",
+            });
+            res.end(
+              JSON.stringify({
+                success: false,
+                error: "File size exceeds the maximum limit of 200MB.",
+              }),
+            );
             return;
           }
 
-          if (mimeType.startsWith("image/") && !mimeType.includes("gif") && !mimeType.includes("webp")) {
+          if (
+            mimeType.startsWith("image/") &&
+            !mimeType.includes("gif") &&
+            !mimeType.includes("webp")
+          ) {
             buffer = await optimizeImageIfPossible(buffer, mimeType);
-          } else if (mimeType.startsWith("video/") && !fileName.endsWith(".gif")) {
+          } else if (
+            mimeType.startsWith("video/") &&
+            !fileName.endsWith(".gif")
+          ) {
             buffer = await compressVideoIfPossible(buffer);
           }
 
@@ -775,11 +1221,16 @@ const server = http.createServer(async (req, res) => {
             messageOptions.image = buffer;
             messageOptions.caption = messageText || "";
             messageOptions.mimetype = mimeType;
-          } else if (mimeType.startsWith("video/") || mimeType.includes("gif") || fileName.endsWith(".gif")) {
+          } else if (
+            mimeType.startsWith("video/") ||
+            mimeType.includes("gif") ||
+            fileName.endsWith(".gif")
+          ) {
             messageOptions.video = buffer;
             messageOptions.caption = messageText || "";
             messageOptions.mimetype = mimeType || "video/mp4";
-            messageOptions.gifPlayback = mimeType.includes("gif") || fileName.endsWith(".gif");
+            messageOptions.gifPlayback =
+              mimeType.includes("gif") || fileName.endsWith(".gif");
           } else if (mimeType.startsWith("audio/")) {
             messageOptions.audio = buffer;
             messageOptions.mimetype = mimeType;
@@ -799,40 +1250,51 @@ const server = http.createServer(async (req, res) => {
               text: messageText,
               mentions: mentionsJids.length > 0 ? mentionsJids : undefined,
             },
-            sendOptions
+            sendOptions,
           );
         }
 
-        console.log(`[WhatsApp API Success] ✅ Message successfully delivered to: ${cleaned}`);
-        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        console.log(
+          `[WhatsApp API Success] ✅ Message successfully delivered to: ${cleaned}`,
+        );
+        res.writeHead(200, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
         res.end(
           JSON.stringify({
             success: true,
             recipient: cleaned,
             message: "WhatsApp message delivered successfully.",
-          })
+          }),
         );
       } catch (err) {
-        console.error(`[WhatsApp API Error] ❌ Failed to deliver to: ${cleaned}. Reason: ${err.message}`);
-        res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+        console.error(
+          `[WhatsApp API Error] ❌ Failed to deliver to: ${cleaned}. Reason: ${err.message}`,
+        );
+        res.writeHead(500, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
         res.end(
           JSON.stringify({
             success: false,
             error: err.message || "Failed to send WhatsApp message.",
-          })
+          }),
         );
       }
     });
   } else {
+    const defaultSession = activeSessions.get("default");
+    const isDefaultConnected = defaultSession ? defaultSession.isConnected : false;
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
     res.end(
       JSON.stringify({
         status: "active",
-        ready: isConnected,
-        authenticated: isConnected,
+        ready: isDefaultConnected,
+        authenticated: isDefaultConnected,
         qrWebUrl: `http://localhost:${PORT}/qr`,
         service: "In-House WhatsApp Ultra-Lightweight Gateway",
-      })
+        totalSessionsCount: activeSessions.size,
+      }),
     );
   }
 });

@@ -33,15 +33,17 @@ if (fs.existsSync(envPath)) {
 }
 
 const TARGET_PHONE = process.argv[2] || "919876543210";
-console.log(`Using target phone: ${TARGET_PHONE}`);
+const SESSION_ID = process.argv[3] || "default";
+
+console.log(`Using target phone: ${TARGET_PHONE} | Session: ${SESSION_ID}`);
 console.log(
-  `Note: You can override this target phone number by running: node test-live.js <phone_number> (e.g. node test-live.js 919876543210)\n`,
+  `Note: You can override phone and session by running: node test-live.js <phone_number> <session_name> (e.g. node test-live.js 919876543210 sales)\n`,
 );
 
 // Helper function to make HTTP POST requests
 function postJSON(data) {
   return new Promise((resolve, reject) => {
-    const payload = JSON.stringify(data);
+    const payload = JSON.stringify({ session: SESSION_ID, ...data });
     const req = http.request(
       `http://localhost:3001/`,
       {
@@ -82,13 +84,13 @@ async function executeLiveTest() {
 
   try {
     // 1. Send Presence Composing (Typing)
-    console.log("\n[1/16] Sending typing presence indicator...");
+    console.log("\n[1/18] Sending typing presence indicator...");
     const r1 = await postJSON({ to: TARGET_PHONE, presence: "composing" });
     console.log("Status:", r1.statusCode, "Response:", r1.body);
     await sleep(2000);
 
     // 2. Send Text Message
-    console.log("\n[2/16] Sending standard text message...");
+    console.log("\n[2/18] Sending standard text message...");
     const r2 = await postJSON({
       to: TARGET_PHONE,
       message:
@@ -98,7 +100,7 @@ async function executeLiveTest() {
     await sleep(2500);
 
     // 3. Send Quoted Reply
-    console.log("\n[3/16] Sending quoted reply message...");
+    console.log("\n[3/18] Sending quoted reply message...");
     const r3 = await postJSON({
       to: TARGET_PHONE,
       message: "This is a replies test quoting a dummy message ID.",
@@ -110,7 +112,7 @@ async function executeLiveTest() {
     await sleep(2500);
 
     // 4. Send Group Mention Payload (Simulated text)
-    console.log("\n[4/16] Sending tag/mentions payload text...");
+    console.log("\n[4/18] Sending tag/mentions payload text...");
     const r4 = await postJSON({
       to: TARGET_PHONE,
       message: "Hey @919876543210 (simulated mention tag link verification)",
@@ -120,7 +122,7 @@ async function executeLiveTest() {
     await sleep(2500);
 
     // 5. Send Location Pin
-    console.log("\n[5/16] Sending location pin...");
+    console.log("\n[5/18] Sending location pin...");
     const r5 = await postJSON({
       to: TARGET_PHONE,
       location: {
@@ -134,7 +136,7 @@ async function executeLiveTest() {
     await sleep(2500);
 
     // 6. Send Single Contact Card
-    console.log("\n[6/16] Sending single contact card (Jane Doe)...");
+    console.log("\n[6/18] Sending single contact card (Jane Doe)...");
     const r6 = await postJSON({
       to: TARGET_PHONE,
       contact: {
@@ -148,7 +150,7 @@ async function executeLiveTest() {
 
     // 7. Send Multiple Contact Cards
     console.log(
-      "\n[7/16] Sending multiple contact cards (Support Directory)...",
+      "\n[7/18] Sending multiple contact cards (Support Directory)...",
     );
     const r7 = await postJSON({
       to: TARGET_PHONE,
@@ -170,7 +172,7 @@ async function executeLiveTest() {
     await sleep(2500);
 
     // 8. Send WebP Sticker via Direct URL
-    console.log("\n[8/16] Sending WebP sticker via direct URL...");
+    console.log("\n[8/18] Sending WebP sticker via direct URL...");
     const r8 = await postJSON({
       to: TARGET_PHONE,
       sticker:
@@ -180,7 +182,7 @@ async function executeLiveTest() {
     await sleep(2500);
 
     // 9. Send Image Attachment via Direct URL
-    console.log("\n[9/16] Sending image attachment via direct URL...");
+    console.log("\n[9/18] Sending image attachment via direct URL...");
     const r9 = await postJSON({
       to: TARGET_PHONE,
       message: "Direct URL image attachment test!",
@@ -194,7 +196,7 @@ async function executeLiveTest() {
     await sleep(2500);
 
     // 10. Send Video Attachment via Direct URL
-    console.log("\n[10/16] Sending video attachment via direct URL...");
+    console.log("\n[10/18] Sending video attachment via direct URL...");
     const r10 = await postJSON({
       to: TARGET_PHONE,
       message: "Direct URL video attachment test!",
@@ -208,7 +210,7 @@ async function executeLiveTest() {
     await sleep(2500);
 
     // 11. Send PDF Document Attachment via Direct URL
-    console.log("\n[11/16] Sending PDF document via direct URL...");
+    console.log("\n[11/18] Sending PDF document via direct URL...");
     const r11 = await postJSON({
       to: TARGET_PHONE,
       message: "Direct URL PDF document test.",
@@ -222,7 +224,7 @@ async function executeLiveTest() {
     await sleep(2500);
 
     // 12. Send Audio note via Direct URL
-    console.log("\n[12/16] Sending audio note via direct URL...");
+    console.log("\n[12/18] Sending audio note via direct URL...");
     const r12 = await postJSON({
       to: TARGET_PHONE,
       attachment: {
@@ -235,7 +237,7 @@ async function executeLiveTest() {
     await sleep(2500);
 
     // 13. Send Interactive Poll
-    console.log("\n[13/16] Sending interactive poll...");
+    console.log("\n[13/18] Sending interactive poll...");
     const r13 = await postJSON({
       to: TARGET_PHONE,
       poll: {
@@ -249,7 +251,7 @@ async function executeLiveTest() {
 
     // 14. Send Image Attachment via Base64
     console.log(
-      "\n[14/16] Sending image attachment via Base64 (backward compatibility test)...",
+      "\n[14/18] Sending image attachment via Base64 (backward compatibility test)...",
     );
     try {
       const imageUrl =
@@ -272,7 +274,7 @@ async function executeLiveTest() {
 
     // 15. Send PDF Document Attachment via Base64
     console.log(
-      "\n[15/16] Sending PDF document via Base64 (backward compatibility test)...",
+      "\n[15/18] Sending PDF document via Base64 (backward compatibility test)...",
     );
     try {
       const pdfUrl =

@@ -16,6 +16,7 @@ This gateway allows any calling application (like a CRM, ERP, Swift Project, or 
 - [Setup and Execution](#setup-and-execution)
 - [Device Pairing](#device-pairing)
 - [Authentication Rules](#authentication-rules)
+- [Multi-Session Management](docs/multi-session-management.md)
 - [Supported Message Types](#supported-message-types)
 - [Throttling and Delays](#throttling-and-delays)
 - [Inspiration and Warnings](#inspiration-and-warnings)
@@ -81,9 +82,9 @@ Once started, the gateway must be linked to an active WhatsApp account:
 
 1. Locate the pairing QR code printed in the terminal console.
 2. Alternatively, open your browser and navigate to:
-   `http://localhost:3001/qr?token=YOUR_API_TOKEN`
+   `http://localhost:3001/qr?token=YOUR_API_TOKEN&session=default`
 3. On your mobile phone, open WhatsApp ➔ **Linked Devices** ➔ **Link a Device** ➔ Scan the QR Code.
-4. Once paired, the browser page and terminal will show `🎉 WhatsApp Gateway is ACTIVE and READY`.
+4. Once paired, the page will confirm active status. To manage or register multiple concurrent sessions, read the **[Multi-Session Management](docs/multi-session-management.md)** guide.
 
 ---
 
