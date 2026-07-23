@@ -1,29 +1,29 @@
-# WhatsApp Throttling & Broadcast Loop Delays
+# Built-in Throttling & In-Memory Queues (Anti-Ban Shield)
 
-When sending WhatsApp messages via this gateway, **sending messages too fast will get your WhatsApp number temporarily or permanently banned.** 
+When sending WhatsApp messages, **sending messages too fast will get your WhatsApp number temporarily or permanently banned.** 
 
-This guide explains the mechanisms behind WhatsApp's anti-spam detection and teaches you how to implement safe, rate-limited loops in your application.
+To eliminate integration complexity, **the Swift Project Gateway features an automated, built-in in-memory message queue with randomized delays.** 
 
 ---
 
-## 1. Why is this necessary? (The Anti-Spam Rule)
+## 1. How the Built-in Queue Works
 
-Unlike email where you can send thousands of messages simultaneously, WhatsApp is a **real-time chat protocol**. 
-WhatsApp's anti-spam algorithms monitor how quickly messages are sent from a single device. If you dispatch 100 messages within a few seconds, WhatsApp's servers will immediately detect this as bot behavior and flag/block your account.
+1. **Instant Payload Validation**: When you hit the `POST /` endpoint, the gateway performs fast syntax, phone format, and size checks on your message. If it is invalid, it returns `400 Bad Request` or `500` immediately so you can handle the error.
+2. **Acceptance and Enqueueing**: If the message is valid, the gateway registers it in memory, replies immediately with `200 OK` (with `"message": "Message queued successfully"`, and the `queuePosition`), and frees your client thread.
+3. **Sequential Background Sending**: The gateway processes each session's queue independently in the background, sending one message at a time.
+4. **Anti-Ban Throttling**: After each successful dispatch, the gateway pauses for a randomized delay between **2.0 and 4.0 seconds** to mimic human typing and protect the account from spam filters.
+5. **Auto-Pause on Disconnect**: If the WhatsApp session loses connection, the background queue worker automatically pauses. Once the connection is re-established, the queue automatically resumes sending where it left off.
 
-To mimic human behavior and protect your WhatsApp number, you **must introduce a delay (spacing)** between every single message you send.
-
-* **Recommended spacing**: **1.5 to 3 seconds** between individual messages.
-* **Avoid Gateway-Side Queuing**: Managing the loop in the calling application is preferred because:
-  1. **Status Visibility**: Your application gets instant feedback (`200 OK` or `500 Error`) for every recipient, allowing you to log delivery status in your database.
-  2. **No Memory Bloat**: Storing hundreds of messages in a queue inside the gateway will cause RAM spikes.
-  3. **No Message Loss**: If the gateway server restarts, any gateway-side queue is lost. By keeping the loop in the calling application, you prevent data loss.
+This completely removes the need to write complex sleep timers, loops, or queue packages in your own client application!
 
 ---
 
 ## 2. Implementations for Beginners
 
-Below are simple, complete code templates that you can copy-paste directly into your project.
+> [!NOTE]
+> While you can still throttle manually in your own code using the loops below, it is **no longer required** since the gateway automatically serializes and rate-limits your dispatches behind the scenes.
+
+Below are simple, complete code templates that you can copy-paste directly into your project if you want to orchestrate batch calls.
 
 ### Node.js / JavaScript (async/await Loop)
 

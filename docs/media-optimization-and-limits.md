@@ -40,3 +40,29 @@ When a video file (MP4/MOV/etc.) is received, the gateway dynamically checks the
   * **Speed Preset**: `superfast`
   * **Cleanup**: All temporary files are safely deleted immediately after processing is completed or fails.
 * **Safe Fallback**: If the FFmpeg command encounters an error, the gateway automatically falls back to sending the **original video buffer**.
+
+---
+
+## 4. How to Install FFmpeg
+
+To enable automated video compression on your gateway server, install FFmpeg on your host operating system:
+
+### Windows (winget - Recommended)
+Open Command Prompt or PowerShell as administrator and run:
+```cmd
+winget install FFmpeg
+```
+*Note: Restart your terminal/command prompt after installation so the gateway can detect the new system environment path variables.*
+
+### Ubuntu / Debian Linux
+Run the following commands in your shell:
+```bash
+sudo apt-get update
+sudo apt-get install -y ffmpeg
+```
+
+### macOS (Homebrew)
+Run the following command:
+```bash
+brew install ffmpeg
+```

@@ -74,6 +74,15 @@ npm start
 
 The console will start the gateway and display a pairing QR code in the terminal.
 
+### 5. Install FFmpeg (Optional - for video compression)
+
+To automatically optimize and compress video files before sending, install FFmpeg on the server:
+* **Windows**: Open cmd/PowerShell as administrator and run `winget install FFmpeg`, then restart the terminal.
+* **Linux**: Run `sudo apt-get install -y ffmpeg`
+* **macOS**: Run `brew install ffmpeg`
+
+For more details on payload size constraints and compression presets, read the **[Media Optimization & File Limits](docs/media-optimization-and-limits.md)** guide.
+
 ---
 
 ## Device Pairing
@@ -131,11 +140,10 @@ To accommodate developers of all experience levels, we have split the message in
 
 ## Throttling and Delays
 
-> [!IMPORTANT]
-> **Account Safety Rule**: WhatsApp monitors anti-spam thresholds. Sending multiple messages too quickly will flag your account and get your number banned.
-> You **must** introduce a **1.5 to 3-second delay (sleep)** in your loop when broadcasting messages sequentially.
->
-> For a deep explanation of spam anti-trigger mechanisms and ready-made broadcast loops, see **[Throttling and Broadcast Loop Delays](docs/throttling-and-delays.md)**.
+> [!TIP]
+> **Automated Anti-Ban Shield**: To prevent your WhatsApp numbers from getting banned, the gateway server features an **in-memory message queue**.
+> When you send messages in bulk, the server immediately accepts them (`200 OK` with a queued status) and pushes them into an isolated background queue per session. It then dispatches them sequentially with a randomized safety delay (2.0s to 4.0s).
+> You no longer need to implement loops, delays, or throttling in your client-side application!
 
 ---
 
@@ -445,4 +453,4 @@ To completely reset the gateway credentials:
 
 #### Q4: Why is it slow when I send messages in parallel?
 
-The gateway will process requests as they arrive, but WhatsApp itself serializes message delivery. Trying to bypass delay loops on your client app will result in connection congestion and increases the risk of WhatsApp spam bans. Always use the recommended **1.5 to 3-second delay** in your loop.
+The gateway will accept parallel requests instantly and return `200 OK` (queued status), but to protect your WhatsApp account from being banned, the server serializes dispatches behind the scenes. It processes them one-by-one with a randomized safety delay of **2 to 4 seconds** between each message. This anti-ban queue ensures your client application stays fast while keeping your phone numbers secure.

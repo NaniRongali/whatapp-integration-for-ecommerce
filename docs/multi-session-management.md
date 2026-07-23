@@ -84,6 +84,17 @@ To send a message from a specific linked WhatsApp account, pass the `session` pa
 }
 ```
 
+### Response Example:
+The server immediately validates inputs and responds with a successful queuing status:
+```json
+{
+  "success": true,
+  "recipient": "919876543210",
+  "message": "Message queued successfully.",
+  "queuePosition": 1
+}
+```
+
 *If you omit the `"session"` property, the gateway defaults to the `"default"` session to maintain complete backward compatibility.*
 
 ---

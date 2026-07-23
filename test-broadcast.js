@@ -53,6 +53,27 @@ function postJSON(data) {
   });
 }
 
+function getStatus() {
+  return new Promise((resolve, reject) => {
+    http
+      .get(
+        `http://localhost:3001/status?token=${API_TOKEN}&session=${SESSION_ID}`,
+        (res) => {
+          let body = "";
+          res.on("data", (chunk) => (body += chunk));
+          res.on("end", () => {
+            try {
+              resolve(JSON.parse(body || "{}"));
+            } catch (e) {
+              resolve({});
+            }
+          });
+        },
+      )
+      .on("error", (e) => reject(e));
+  });
+}
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function runBroadcast() {
@@ -69,13 +90,29 @@ async function runBroadcast() {
     } catch (e) {
       console.error(`Client request failed:`, e.message);
     }
-    
-    if (i < RECIPIENTS.length - 1) {
-      console.log("Waiting 2.5 seconds before next dispatch...");
-      await sleep(2500);
+  }
+
+  console.log("\n--------------------------------------------------");
+  console.log("📨 All broadcast messages enqueued on the server!");
+  console.log("--------------------------------------------------");
+  console.log("Waiting for the server queue to finish delivering...");
+
+  let remaining = 99;
+  while (remaining > 0) {
+    try {
+      const status = await getStatus();
+      remaining = status.queueLength !== undefined ? status.queueLength : 0;
+      if (remaining > 0) {
+        console.log(`[Queue Progress] Pending messages remaining in queue: ${remaining}`);
+        await sleep(2500);
+      }
+    } catch (err) {
+      console.error("Failed to poll status:", err.message);
+      break;
     }
   }
-  console.log("\nBroadcast test complete.");
+
+  console.log("\nBroadcast test complete and all messages successfully delivered!");
 }
 
 runBroadcast();

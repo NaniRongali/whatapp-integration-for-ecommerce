@@ -318,7 +318,7 @@ async function getAuthState(sessionId) {
       return await usePostgresAuthState(dbPool, sessionId);
     } catch (e) {
       console.error(
-        `⚠️ Failed to initialize Postgres auth for session ${sessionId}, falling back to local file auth:`,
+        `Failed to initialize Postgres auth for session ${sessionId}, falling back to local file auth:`,
         e.message,
       );
     }
@@ -346,6 +346,52 @@ async function clearSessionAuth(sessionId) {
   } catch (e) {}
 }
 
+async function processSessionQueue(sessionId) {
+  const session = activeSessions.get(sessionId);
+  if (!session || session.isProcessing) return;
+
+  session.isProcessing = true;
+
+  try {
+    while (session.queue.length > 0) {
+      if (!session.isConnected || !session.sock) {
+        console.warn(
+          `[Session: ${sessionId}] Queue paused: WhatsApp client is disconnected. Waiting for reconnection...`,
+        );
+        break;
+      }
+
+      const now = Date.now();
+      const timeSinceLastSend = now - (session.lastSendTime || 0);
+      const minDelay = session.lastDelay || (Math.floor(Math.random() * 2000) + 2000);
+
+      if (timeSinceLastSend < minDelay) {
+        const sleepTime = minDelay - timeSinceLastSend;
+        await new Promise((resolve) => setTimeout(resolve, sleepTime));
+      }
+
+      const task = session.queue.shift();
+      try {
+        await task();
+      } catch (err) {
+        console.error(
+          `[WhatsApp API Error] Queue dispatch failed in session '${sessionId}': Reason: ${err.message}`,
+        );
+      }
+
+      session.lastSendTime = Date.now();
+      session.lastDelay = Math.floor(Math.random() * 2000) + 2000;
+    }
+  } catch (err) {
+    console.error(
+      `[Session: ${sessionId}] Queue worker critical error:`,
+      err.message,
+    );
+  } finally {
+    session.isProcessing = false;
+  }
+}
+
 function getOrInitSession(sessionId) {
   if (activeSessions.has(sessionId)) {
     return activeSessions.get(sessionId);
@@ -355,6 +401,10 @@ function getOrInitSession(sessionId) {
     sock: null,
     isConnected: false,
     latestQrCode: null,
+    queue: [],
+    isProcessing: false,
+    lastSendTime: 0,
+    lastDelay: 0,
   };
   activeSessions.set(sessionId, sessionData);
 
@@ -418,11 +468,12 @@ function getOrInitSession(sessionId) {
           console.log(
             `[Session: ${sessionId}] ✅ Connected to WhatsApp successfully! User: ${sock.user?.id || ""}`,
           );
+          processSessionQueue(sessionId);
         }
       });
     } catch (err) {
       console.error(
-        `[Session: ${sessionId}] ❌ Socket initialization failed:`,
+        `[Session: ${sessionId}] Socket initialization failed:`,
         err.message,
       );
       setTimeout(initialize, 5000);
@@ -579,24 +630,39 @@ const server = http.createServer(async (req, res) => {
     const sessionId = url.searchParams.get("session");
     if (!sessionId) {
       res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ success: false, error: "Missing required 'session' query parameter." }));
+      res.end(
+        JSON.stringify({
+          success: false,
+          error: "Missing required 'session' query parameter.",
+        }),
+      );
       return;
     }
 
     const sData = activeSessions.get(sessionId);
     if (!sData) {
       res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ success: false, error: `Session '${sessionId}' not found.` }));
+      res.end(
+        JSON.stringify({
+          success: false,
+          error: `Session '${sessionId}' not found.`,
+        }),
+      );
       return;
     }
 
-    console.log(`[Session: ${sessionId}] 🗑️ Remote delete requested. Logging out and clearing credentials...`);
+    console.log(
+      `[Session: ${sessionId}] Remote delete requested. Logging out and clearing credentials...`,
+    );
 
     if (sData.sock && sData.isConnected) {
       try {
         await sData.sock.logout();
       } catch (err) {
-        console.warn(`[Session: ${sessionId}] Socket logout failed, closing connection manually:`, err.message);
+        console.warn(
+          `[Session: ${sessionId}] Socket logout failed, closing connection manually:`,
+          err.message,
+        );
         try {
           sData.sock.end(undefined);
         } catch (e) {}
@@ -607,7 +673,12 @@ const server = http.createServer(async (req, res) => {
     activeSessions.delete(sessionId);
 
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify({ success: true, message: `Session '${sessionId}' successfully logged out and deleted.` }));
+    res.end(
+      JSON.stringify({
+        success: true,
+        message: `Session '${sessionId}' successfully logged out and deleted.`,
+      }),
+    );
     return;
   }
 
@@ -627,24 +698,39 @@ const server = http.createServer(async (req, res) => {
     const sessionId = url.searchParams.get("session");
     if (!sessionId) {
       res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ success: false, error: "Missing required 'session' query parameter." }));
+      res.end(
+        JSON.stringify({
+          success: false,
+          error: "Missing required 'session' query parameter.",
+        }),
+      );
       return;
     }
 
     const sData = activeSessions.get(sessionId);
     if (!sData) {
       res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ success: false, error: `Session '${sessionId}' not found.` }));
+      res.end(
+        JSON.stringify({
+          success: false,
+          error: `Session '${sessionId}' not found.`,
+        }),
+      );
       return;
     }
 
-    console.log(`[Session: ${sessionId}] 🗑️ Remote delete requested via GET. Logging out and clearing credentials...`);
+    console.log(
+      `[Session: ${sessionId}] Remote delete requested via GET. Logging out and clearing credentials...`,
+    );
 
     if (sData.sock && sData.isConnected) {
       try {
         await sData.sock.logout();
       } catch (err) {
-        console.warn(`[Session: ${sessionId}] Socket logout failed, closing connection manually:`, err.message);
+        console.warn(
+          `[Session: ${sessionId}] Socket logout failed, closing connection manually:`,
+          err.message,
+        );
         try {
           sData.sock.end(undefined);
         } catch (e) {}
@@ -655,7 +741,12 @@ const server = http.createServer(async (req, res) => {
     activeSessions.delete(sessionId);
 
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify({ success: true, message: `Session '${sessionId}' successfully logged out and deleted via browser URL.` }));
+    res.end(
+      JSON.stringify({
+        success: true,
+        message: `Session '${sessionId}' successfully logged out and deleted via browser URL.`,
+      }),
+    );
     return;
   }
 
@@ -699,6 +790,7 @@ const server = http.createServer(async (req, res) => {
         phone: sData.sock?.user?.id
           ? sData.sock.user.id.split(":")[0].split("@")[0]
           : null,
+        queueLength: sData.queue ? sData.queue.length : 0,
       }),
     );
     return;
@@ -1074,9 +1166,9 @@ const server = http.createServer(async (req, res) => {
           }
         }
 
-        if (!session.isConnected || !session.sock) {
+        if (!session.sock) {
           console.warn(
-            `[Connection Offline]: Cannot deliver to '${cleaned}'. Session '${sessionId}' is disconnected.`,
+            `[Session Not Found]: Cannot queue message. Session '${sessionId}' is not active.`,
           );
           res.writeHead(503, {
             "Content-Type": "application/json; charset=utf-8",
@@ -1089,8 +1181,6 @@ const server = http.createServer(async (req, res) => {
           );
           return;
         }
-
-        const sock = session.sock;
 
         const jid = `${cleaned}@s.whatsapp.net`;
         const mentionsJids = [];
@@ -1118,106 +1208,18 @@ const server = http.createServer(async (req, res) => {
           };
         }
 
-        console.log(
-          `[WhatsApp API Request] ➡️ Dispatching message to: ${cleaned}...`,
-        );
+        let stickerBuffer = null;
+        let buffer = null;
+        let mimeType = null;
+        let fileName = null;
 
-        if (presence) {
-          await sock.sendPresenceUpdate(presence, jid);
-        } else if (poll && typeof poll === "object") {
-          await sock.sendMessage(
-            jid,
-            {
-              poll: {
-                name: poll.name,
-                values: poll.options,
-                selectableCount:
-                  poll.selectableCount !== undefined ? poll.selectableCount : 1,
-              },
-            },
-            sendOptions,
-          );
-        } else if (reaction && typeof reaction === "object") {
-          const { emoji, messageId, fromMe } = reaction;
-          await sock.sendMessage(jid, {
-            react: {
-              text: emoji,
-              key: {
-                remoteJid: jid,
-                fromMe: fromMe !== undefined ? fromMe : false,
-                id: messageId,
-              },
-            },
-          });
-        } else if (contactsList && Array.isArray(contactsList)) {
-          const contacts = contactsList.map((c) => {
-            const fullName = c.fullName;
-            const organization = c.organization || "";
-            const phone = c.phone;
-            const cleanContactPhone = String(phone).replace(/\D/g, "");
-            const vcard =
-              `BEGIN:VCARD\n` +
-              `VERSION:3.0\n` +
-              `FN:${fullName}\n` +
-              (organization ? `ORG:${organization};\n` : "") +
-              `TEL;type=CELL;type=VOICE;waid=${cleanContactPhone}:${phone}\n` +
-              `END:VCARD`;
-            return { displayName: fullName, vcard };
-          });
-
-          await sock.sendMessage(
-            jid,
-            {
-              contacts: {
-                displayName: data.contactsDisplayName || "Shared Contacts",
-                contacts: contacts,
-              },
-            },
-            sendOptions,
-          );
-        } else if (location && typeof location === "object") {
-          const { latitude, longitude, name, address } = location;
-          await sock.sendMessage(
-            jid,
-            {
-              location: {
-                degreesLatitude: parseFloat(latitude),
-                degreesLongitude: parseFloat(longitude),
-                name: name || "",
-                address: address || "",
-              },
-            },
-            sendOptions,
-          );
-        } else if (contact && typeof contact === "object") {
-          const { fullName, organization, phone } = contact;
-          const cleanContactPhone = String(phone).replace(/\D/g, "");
-          const vcard =
-            `BEGIN:VCARD\n` +
-            `VERSION:3.0\n` +
-            `FN:${fullName}\n` +
-            (organization ? `ORG:${organization};\n` : "") +
-            `TEL;type=CELL;type=VOICE;waid=${cleanContactPhone}:${phone}\n` +
-            `END:VCARD`;
-
-          await sock.sendMessage(
-            jid,
-            {
-              contacts: {
-                displayName: fullName,
-                contacts: [{ vcard }],
-              },
-            },
-            sendOptions,
-          );
-        } else if (
+        if (
           sticker ||
           (attachment &&
             (attachment.isSticker ||
               (attachment.contentType &&
                 attachment.contentType.toLowerCase() === "image/webp")))
         ) {
-          let stickerBuffer;
           if (sticker) {
             if (
               sticker.startsWith("http://") ||
@@ -1253,13 +1255,7 @@ const server = http.createServer(async (req, res) => {
             );
             return;
           }
-
-          await sock.sendMessage(jid, { sticker: stickerBuffer }, sendOptions);
         } else if (attachment && (attachment.contentBase64 || attachment.url)) {
-          let buffer;
-          let mimeType;
-          let fileName;
-
           if (attachment.url) {
             const download = await downloadUrlToBuffer(attachment.url);
             buffer = download.buffer;
@@ -1308,50 +1304,156 @@ const server = http.createServer(async (req, res) => {
           ) {
             buffer = await compressVideoIfPossible(buffer);
           }
-
-          let messageOptions = {
-            mentions: mentionsJids.length > 0 ? mentionsJids : undefined,
-          };
-
-          if (mimeType.startsWith("image/") && !mimeType.includes("gif")) {
-            messageOptions.image = buffer;
-            messageOptions.caption = messageText || "";
-            messageOptions.mimetype = mimeType;
-          } else if (
-            mimeType.startsWith("video/") ||
-            mimeType.includes("gif") ||
-            fileName.endsWith(".gif")
-          ) {
-            messageOptions.video = buffer;
-            messageOptions.caption = messageText || "";
-            messageOptions.mimetype = mimeType || "video/mp4";
-            messageOptions.gifPlayback =
-              mimeType.includes("gif") || fileName.endsWith(".gif");
-          } else if (mimeType.startsWith("audio/")) {
-            messageOptions.audio = buffer;
-            messageOptions.mimetype = mimeType;
-            messageOptions.caption = messageText || "";
-          } else {
-            messageOptions.document = buffer;
-            messageOptions.fileName = fileName;
-            messageOptions.mimetype = mimeType || "application/octet-stream";
-            messageOptions.caption = messageText || "";
-          }
-
-          await sock.sendMessage(jid, messageOptions, sendOptions);
-        } else {
-          await sock.sendMessage(
-            jid,
-            {
-              text: messageText,
-              mentions: mentionsJids.length > 0 ? mentionsJids : undefined,
-            },
-            sendOptions,
-          );
         }
 
+        const task = async () => {
+          const sock = session.sock;
+          if (!sock)
+            throw new Error("Socket disconnected before processing task.");
+
+          if (presence) {
+            await sock.sendPresenceUpdate(presence, jid);
+          } else if (poll && typeof poll === "object") {
+            await sock.sendMessage(
+              jid,
+              {
+                poll: {
+                  name: poll.name,
+                  values: poll.options,
+                  selectableCount:
+                    poll.selectableCount !== undefined
+                      ? poll.selectableCount
+                      : 1,
+                },
+              },
+              sendOptions,
+            );
+          } else if (reaction && typeof reaction === "object") {
+            const { emoji, messageId, fromMe } = reaction;
+            await sock.sendMessage(jid, {
+              react: {
+                text: emoji,
+                key: {
+                  remoteJid: jid,
+                  fromMe: fromMe !== undefined ? fromMe : false,
+                  id: messageId,
+                },
+              },
+            });
+          } else if (contactsList && Array.isArray(contactsList)) {
+            const contacts = contactsList.map((c) => {
+              const fullName = c.fullName;
+              const organization = c.organization || "";
+              const phone = c.phone;
+              const cleanContactPhone = String(phone).replace(/\D/g, "");
+              const vcard =
+                `BEGIN:VCARD\n` +
+                `VERSION:3.0\n` +
+                `FN:${fullName}\n` +
+                (organization ? `ORG:${organization};\n` : "") +
+                `TEL;type=CELL;type=VOICE;waid=${cleanContactPhone}:${phone}\n` +
+                `END:VCARD`;
+              return { displayName: fullName, vcard };
+            });
+
+            await sock.sendMessage(
+              jid,
+              {
+                contacts: {
+                  displayName: data.contactsDisplayName || "Shared Contacts",
+                  contacts: contacts,
+                },
+              },
+              sendOptions,
+            );
+          } else if (location && typeof location === "object") {
+            const { latitude, longitude, name, address } = location;
+            await sock.sendMessage(
+              jid,
+              {
+                location: {
+                  degreesLatitude: parseFloat(latitude),
+                  degreesLongitude: parseFloat(longitude),
+                  name: name || "",
+                  address: address || "",
+                },
+              },
+              sendOptions,
+            );
+          } else if (contact && typeof contact === "object") {
+            const { fullName, organization, phone } = contact;
+            const cleanContactPhone = String(phone).replace(/\D/g, "");
+            const vcard =
+              `BEGIN:VCARD\n` +
+              `VERSION:3.0\n` +
+              `FN:${fullName}\n` +
+              (organization ? `ORG:${organization};\n` : "") +
+              `TEL;type=CELL;type=VOICE;waid=${cleanContactPhone}:${phone}\n` +
+              `END:VCARD`;
+
+            await sock.sendMessage(
+              jid,
+              {
+                contacts: {
+                  displayName: fullName,
+                  contacts: [{ vcard }],
+                },
+              },
+              sendOptions,
+            );
+          } else if (stickerBuffer) {
+            await sock.sendMessage(
+              jid,
+              { sticker: stickerBuffer },
+              sendOptions,
+            );
+          } else if (buffer) {
+            let messageOptions = {
+              mentions: mentionsJids.length > 0 ? mentionsJids : undefined,
+            };
+
+            if (mimeType.startsWith("image/") && !mimeType.includes("gif")) {
+              messageOptions.image = buffer;
+              messageOptions.caption = messageText || "";
+              messageOptions.mimetype = mimeType;
+            } else if (
+              mimeType.startsWith("video/") ||
+              mimeType.includes("gif") ||
+              fileName.endsWith(".gif")
+            ) {
+              messageOptions.video = buffer;
+              messageOptions.caption = messageText || "";
+              messageOptions.mimetype = mimeType || "video/mp4";
+              messageOptions.gifPlayback =
+                mimeType.includes("gif") || fileName.endsWith(".gif");
+            } else if (mimeType.startsWith("audio/")) {
+              messageOptions.audio = buffer;
+              messageOptions.mimetype = mimeType;
+              messageOptions.caption = messageText || "";
+            } else {
+              messageOptions.document = buffer;
+              messageOptions.fileName = fileName;
+              messageOptions.mimetype = mimeType || "application/octet-stream";
+              messageOptions.caption = messageText || "";
+            }
+
+            await sock.sendMessage(jid, messageOptions, sendOptions);
+          } else {
+            await sock.sendMessage(
+              jid,
+              {
+                text: messageText,
+                mentions: mentionsJids.length > 0 ? mentionsJids : undefined,
+              },
+              sendOptions,
+            );
+          }
+        };
+
+        session.queue.push(task);
+
         console.log(
-          `[WhatsApp API Success] ✅ Message successfully delivered to: ${cleaned}`,
+          `[Queue Add] Message added to queue for '${cleaned}' in session '${sessionId}'. Queue size: ${session.queue.length}`,
         );
         res.writeHead(200, {
           "Content-Type": "application/json; charset=utf-8",
@@ -1360,12 +1462,15 @@ const server = http.createServer(async (req, res) => {
           JSON.stringify({
             success: true,
             recipient: cleaned,
-            message: "WhatsApp message delivered successfully.",
+            message: "Message queued successfully.",
+            queuePosition: session.queue.length,
           }),
         );
+
+        processSessionQueue(sessionId);
       } catch (err) {
         console.error(
-          `[WhatsApp API Error] ❌ Failed to deliver to: ${cleaned}. Reason: ${err.message}`,
+          `[Queue Error]  Failed to enqueue message. Reason: ${err.message}`,
         );
         res.writeHead(500, {
           "Content-Type": "application/json; charset=utf-8",
@@ -1373,14 +1478,16 @@ const server = http.createServer(async (req, res) => {
         res.end(
           JSON.stringify({
             success: false,
-            error: err.message || "Failed to send WhatsApp message.",
+            error: err.message || "Failed to process message payload.",
           }),
         );
       }
     });
   } else {
     const defaultSession = activeSessions.get("default");
-    const isDefaultConnected = defaultSession ? defaultSession.isConnected : false;
+    const isDefaultConnected = defaultSession
+      ? defaultSession.isConnected
+      : false;
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
     res.end(
       JSON.stringify({
@@ -1396,5 +1503,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`📡 Listening for WhatsApp dispatches on port ${PORT}...`);
+  console.log(`Listening for WhatsApp dispatches on port ${PORT}...`);
 });

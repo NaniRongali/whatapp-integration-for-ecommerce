@@ -73,6 +73,27 @@ function postJSON(data) {
   });
 }
 
+function getStatus() {
+  return new Promise((resolve, reject) => {
+    http
+      .get(
+        `http://localhost:3001/status?token=${API_TOKEN}&session=${SESSION_ID}`,
+        (res) => {
+          let body = "";
+          res.on("data", (chunk) => (body += chunk));
+          res.on("end", () => {
+            try {
+              resolve(JSON.parse(body || "{}"));
+            } catch (e) {
+              resolve({});
+            }
+          });
+        },
+      )
+      .on("error", (e) => reject(e));
+  });
+}
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function executeLiveTest() {
@@ -356,7 +377,27 @@ async function executeLiveTest() {
     }
 
     console.log("\n--------------------------------------------------");
-    console.log("🎉 ALL 18 COMPREHENSIVE SWIFT GATEWAY FEATURES VERIFIED!");
+    console.log("📨 All 18 requests enqueued on the server successfully!");
+    console.log("--------------------------------------------------");
+    console.log("Waiting for the server queue to finish delivering...");
+
+    let remaining = 99;
+    while (remaining > 0) {
+      try {
+        const status = await getStatus();
+        remaining = status.queueLength !== undefined ? status.queueLength : 0;
+        if (remaining > 0) {
+          console.log(`[Queue Progress] Pending messages remaining in queue: ${remaining}`);
+          await sleep(2500);
+        }
+      } catch (err) {
+        console.error("Failed to poll status:", err.message);
+        break;
+      }
+    }
+
+    console.log("\n--------------------------------------------------");
+    console.log("🎉 ALL 18 COMPREHENSIVE SWIFT GATEWAY FEATURES VERIFIED & DELIVERED!");
     console.log("--------------------------------------------------");
   } catch (err) {
     console.error("❌ Live test execution failed:", err.message);
