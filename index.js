@@ -373,7 +373,7 @@ function getOrInitSession(sessionId) {
         printQRInTerminal: false,
         auth: state,
         generateHighQualityLinkPreview: false,
-        browser: ["Swift Project Gateway", "Chrome", "1.0.0"],
+        browser: [`Swift Project (${sessionId})`, "Chrome", "1.0.0"],
       });
 
       sessionData.sock = sock;
@@ -560,6 +560,102 @@ const server = http.createServer(async (req, res) => {
 
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ success: true, sessions: sessionsList }));
+    return;
+  }
+
+  // 1.5. DELETE /sessions - delete session and log out
+  if (req.method === "DELETE" && url.pathname === "/sessions") {
+    if (!isAuthorized(req, url)) {
+      res.writeHead(401, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(
+        JSON.stringify({
+          success: false,
+          error: "Unauthorized. Invalid or missing API token.",
+        }),
+      );
+      return;
+    }
+
+    const sessionId = url.searchParams.get("session");
+    if (!sessionId) {
+      res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ success: false, error: "Missing required 'session' query parameter." }));
+      return;
+    }
+
+    const sData = activeSessions.get(sessionId);
+    if (!sData) {
+      res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ success: false, error: `Session '${sessionId}' not found.` }));
+      return;
+    }
+
+    console.log(`[Session: ${sessionId}] 🗑️ Remote delete requested. Logging out and clearing credentials...`);
+
+    if (sData.sock && sData.isConnected) {
+      try {
+        await sData.sock.logout();
+      } catch (err) {
+        console.warn(`[Session: ${sessionId}] Socket logout failed, closing connection manually:`, err.message);
+        try {
+          sData.sock.end(undefined);
+        } catch (e) {}
+      }
+    }
+
+    await clearSessionAuth(sessionId);
+    activeSessions.delete(sessionId);
+
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ success: true, message: `Session '${sessionId}' successfully logged out and deleted.` }));
+    return;
+  }
+
+  // 1.6. GET /sessions/delete - browser-friendly session deletion
+  if (req.method === "GET" && url.pathname === "/sessions/delete") {
+    if (!isAuthorized(req, url)) {
+      res.writeHead(401, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(
+        JSON.stringify({
+          success: false,
+          error: "Unauthorized. Invalid or missing API token.",
+        }),
+      );
+      return;
+    }
+
+    const sessionId = url.searchParams.get("session");
+    if (!sessionId) {
+      res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ success: false, error: "Missing required 'session' query parameter." }));
+      return;
+    }
+
+    const sData = activeSessions.get(sessionId);
+    if (!sData) {
+      res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ success: false, error: `Session '${sessionId}' not found.` }));
+      return;
+    }
+
+    console.log(`[Session: ${sessionId}] 🗑️ Remote delete requested via GET. Logging out and clearing credentials...`);
+
+    if (sData.sock && sData.isConnected) {
+      try {
+        await sData.sock.logout();
+      } catch (err) {
+        console.warn(`[Session: ${sessionId}] Socket logout failed, closing connection manually:`, err.message);
+        try {
+          sData.sock.end(undefined);
+        } catch (e) {}
+      }
+    }
+
+    await clearSessionAuth(sessionId);
+    activeSessions.delete(sessionId);
+
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ success: true, message: `Session '${sessionId}' successfully logged out and deleted via browser URL.` }));
     return;
   }
 

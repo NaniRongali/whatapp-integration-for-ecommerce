@@ -54,6 +54,21 @@ Initialize a new session and display its pairing QR code:
   * `token` (Optional)
 * **Behavior**: If the session ID does not exist, the gateway automatically registers and boots it up in-memory, generating a fresh QR code immediately.
 
+### D. Log Out & Delete Session
+Remotely unlink the session device, close its socket connection, and delete the associated credentials database rows or folder. This can be triggered either via a REST call or directly inside a web browser URL link:
+* **Standard API Route**: `DELETE /sessions`
+* **Browser-Friendly Route**: `GET /sessions/delete`
+* **Query Parameters**:
+  * `session` (Required, e.g. `?session=sales`)
+  * `token` (Optional)
+* **Response**:
+  ```json
+  {
+    "success": true,
+    "message": "Session 'sales' successfully logged out and deleted."
+  }
+  ```
+
 ---
 
 ## 3. Directing Messages to a Specific Session
@@ -70,3 +85,34 @@ To send a message from a specific linked WhatsApp account, pass the `session` pa
 ```
 
 *If you omit the `"session"` property, the gateway defaults to the `"default"` session to maintain complete backward compatibility.*
+
+---
+
+## 4. Route Summary Quick Reference
+
+Below are the exact request URLs for quick testing and integration:
+
+* **List All Sessions**:
+  ```http
+  GET http://localhost:3001/sessions?token=YOUR_API_TOKEN
+  ```
+
+* **Get Session Status**:
+  ```http
+  GET http://localhost:3001/status?token=YOUR_API_TOKEN&session=YOUR_SESSION_NAME
+  ```
+
+* **Link Device / View QR Page**:
+  ```http
+  GET http://localhost:3001/qr?token=YOUR_API_TOKEN&session=YOUR_SESSION_NAME
+  ```
+
+* **Remote Logout & Delete Session**:
+  * **API REST Call**:
+    ```http
+    DELETE http://localhost:3001/sessions?token=YOUR_API_TOKEN&session=YOUR_SESSION_NAME
+    ```
+  * **Direct Browser URL Click**:
+    ```http
+    GET http://localhost:3001/sessions/delete?token=YOUR_API_TOKEN&session=YOUR_SESSION_NAME
+    ```
