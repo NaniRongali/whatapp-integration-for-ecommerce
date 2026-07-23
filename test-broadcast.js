@@ -15,7 +15,9 @@ if (fs.existsSync(envPath)) {
 
 const RECIPIENTS = process.argv.slice(2);
 if (RECIPIENTS.length === 0) {
-  console.log("Usage: node test-broadcast.js <phone_number_1> <phone_number_2> ... <phone_number_N>");
+  console.log(
+    "Usage: node test-broadcast.js <phone_number_1> <phone_number_2> ... <phone_number_N>",
+  );
   console.log("Example: node test-broadcast.js 919876543210 919999988888\n");
   process.exit(0);
 }
@@ -30,7 +32,7 @@ function postJSON(data) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${API_TOKEN}`,
+          Authorization: `Bearer ${API_TOKEN}`,
           "Content-Length": Buffer.byteLength(payload),
         },
       },
@@ -44,7 +46,7 @@ function postJSON(data) {
           } catch (e) {}
           resolve({ statusCode: res.statusCode, body: parsed });
         });
-      }
+      },
     );
 
     req.on("error", (e) => reject(e));
@@ -77,20 +79,30 @@ function getStatus() {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function runBroadcast() {
-  console.log(`Starting broadcast test for recipients: ${RECIPIENTS.join(", ")}`);
-  for (let i = 0; i < RECIPIENTS.length; i++) {
-    const phone = RECIPIENTS[i];
-    console.log(`\nDispatching request to recipient ${i + 1}/${RECIPIENTS.length}: ${phone}`);
-    try {
-      const response = await postJSON({
-        to: phone,
-        message: "Hello! This is a multi-recipient broadcast test verifying the server logs."
-      });
-      console.log(`Client response: Status ${response.statusCode}`, response.body);
-    } catch (e) {
-      console.error(`Client request failed:`, e.message);
-    }
-  }
+  console.log(
+    `Starting broadcast test for recipients: ${RECIPIENTS.join(", ")}`,
+  );
+
+  const promises = RECIPIENTS.map((phone, i) => {
+    return (async () => {
+      console.log(`Dispatching request to recipient ${i + 1}/${RECIPIENTS.length}: ${phone}`);
+      try {
+        const response = await postJSON({
+          to: phone,
+          message:
+            "Hello! This is a Sriram sending multi-recipient broadcast test verifying the server logs.",
+        });
+        console.log(
+          `Client response for ${phone}: Status ${response.statusCode}`,
+          response.body,
+        );
+      } catch (e) {
+        console.error(`Client request failed for ${phone}:`, e.message);
+      }
+    })();
+  });
+
+  await Promise.all(promises);
 
   console.log("\n--------------------------------------------------");
   console.log("📨 All broadcast messages enqueued on the server!");
@@ -103,7 +115,9 @@ async function runBroadcast() {
       const status = await getStatus();
       remaining = status.queueLength !== undefined ? status.queueLength : 0;
       if (remaining > 0) {
-        console.log(`[Queue Progress] Pending messages remaining in queue: ${remaining}`);
+        console.log(
+          `[Queue Progress] Pending messages remaining in queue: ${remaining}`,
+        );
         await sleep(2500);
       }
     } catch (err) {
@@ -112,7 +126,9 @@ async function runBroadcast() {
     }
   }
 
-  console.log("\nBroadcast test complete and all messages successfully delivered!");
+  console.log(
+    "\nBroadcast test complete and all messages successfully delivered!",
+  );
 }
 
 runBroadcast();
