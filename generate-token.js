@@ -2,6 +2,8 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
+console.log("--------------------------------------------------");
+
 const envPath = path.join(__dirname, ".env");
 const token = crypto.randomBytes(32).toString("hex");
 
